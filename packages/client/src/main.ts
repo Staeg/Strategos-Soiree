@@ -2,7 +2,6 @@ import Phaser from 'phaser';
 import { H, W } from './ui.ts';
 import { Boot } from './scenes/Boot.ts';
 import { Title } from './scenes/Title.ts';
-import { Draft } from './scenes/Draft.ts';
 import { Match } from './scenes/Match.ts';
 
 new Phaser.Game({
@@ -14,5 +13,5 @@ new Phaser.Game({
   roundPixels: true,
   backgroundColor: '#120d19',
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-  scene: [Boot, Title, Draft, Match],
+  scene: [Boot, Title, Match],
 });

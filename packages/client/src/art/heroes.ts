@@ -42,7 +42,8 @@ export interface Costume {
   strike: Patch[];
 }
 
-export const COSTUMES: Record<HeroId, Costume> = {
+/** Costumes by look. Placeholder heroes borrow these until the roster has its own. */
+export const COSTUMES = {
   knight: {
     wear: [{ x: 5, y: 2, rows: ['.MMMM.', 'MmmmmM', 'Mm..mM'] }],
     idle: [{ x: 12, y: 3, rows: ['.h.', '.m.', '.m.', '.m.', '.m.', 'ggg', '.w.'] }],
@@ -83,14 +84,20 @@ export const COSTUMES: Record<HeroId, Costume> = {
     idle: [{ x: 10, y: 7, rows: ['.MM.', 'MmmM', 'MgmM', 'MmmM', 'MmmM', '.MM.'] }],
     strike: [{ x: 12, y: 6, rows: ['.MM.', 'MmmM', 'MgmM', 'MmgM', 'MmmM', 'MmmM', '.MM.'] }],
   },
+} satisfies Record<string, Costume>;
+
+export const LOOKS: Record<HeroId, keyof typeof COSTUMES> = {
+  stubTop: 'warden', stubJungle: 'rogue', stubMid: 'mage', stubSupport: 'cleric', stubCarry: 'archer',
 };
 
-/** Tiny 8x8 card emblems. */
-export const CARD_ICONS: Record<string, string[]> = {
-  rally: ['g.......', 'gtttt...', 'gttttt..', 'gtttt...', 'g.......', 'g.......', 'g.......', 'gg......'],
-  volley: ['w..w..w.', 'w..w..w.', 'w..w..w.', 'm..m..m.', 'h..h..h.', '........', '.oooooo.', '........'],
-  fortify: ['.MMMMMM.', 'MmmmmmmM', 'MmmggmmM', 'MmggggmM', 'MmmggmmM', '.MmmmmM.', '..MmmM..', '...MM...'],
-  warcry: ['m......m', '.m....m.', '..m..m..', '...mm...', '...mm...', '..g..g..', '.w....w.', 'w......w'],
-  haste: ['....gg..', '...gg...', '..gg....', '.ggggg..', '...gg...', '..gg....', '.gg.....', 'g.......'],
-  gambit: ['.oooooo.', 'occcccco', 'ococcoco', 'occcccco', 'occcccco', 'ococcoco', 'occcccco', '.oooooo.'],
-};
+/** Tiny 8x8 card emblems, one per kind of card. */
+export const CARD_ICONS = {
+  engage: ['m......m', '.m....m.', '..m..m..', '...mm...', '...mm...', '..g..g..', '.w....w.', 'w......w'],
+  join: ['g.......', 'gtttt...', 'gttttt..', 'gtttt...', 'g.......', 'g.......', 'g.......', 'gg......'],
+  tactic: ['....gg..', '...gg...', '..gg....', '.ggggg..', '...gg...', '..gg....', '.gg.....', 'g.......'],
+  guard: ['.MMMMMM.', 'MmmmmmmM', 'MmmggmmM', 'MmggggmM', 'MmmggmmM', '.MmmmmM.', '..MmmM..', '...MM...'],
+  reveal: ['........', '..oooo..', '.occcco.', 'occttcco', 'occttcco', '.occcco.', '..oooo..', '........'],
+  evade: ['.....ll.', '....lll.', '...lll..', '..lll...', '.lll....', 'lll.....', '.l......', '........'],
+  strike: ['w..w..w.', 'w..w..w.', 'w..w..w.', 'm..m..m.', 'h..h..h.', '........', '.oooooo.', '........'],
+  heal: ['...LL...', '...LL...', '.LLLLLL.', '.LLLLLL.', '...LL...', '...LL...', '........', '........'],
+} satisfies Record<string, string[]>;
