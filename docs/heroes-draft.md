@@ -26,7 +26,9 @@ roster both depend on, so they are worth agreeing on early.
 - **Join (reach R)**: this hero enters an allied engagement within R hexes.
   A hero in aggressive stance has 1 less reach to Join.
 - **Tactic**: changes an engagement this hero is in (or joins this phase).
-- **Reveal**: grants vision until the end of the next map phase.
+- **No reveal cards.** Cards resolve simultaneously and the map moves on
+  before you could use what they show, so vision lives on map abilities
+  and Command ultimates only.
 - **Bound**: every hero card is bound; it fizzles if its hero is dead or at
   base when it resolves. (Hidden keyword, shown with Alt.)
 - **Shield**: absorbs damage, gone at the end of the fight phase.
@@ -146,7 +148,7 @@ in a fixed direction regardless of where he faces. Bone white and slate.
 | Card | Cost | Init | Keywords | Effect |
 |---|---|---|---|---|
 | High Noon | 2 | 5 | Engage (1, 50) | One target only: nobody else can Join this engagement. |
-| Sundial Stake | 1 | 2 | Reveal | Reveal Gnomon's hex and every hex within 2. |
+| Hour Hand | 1 | 2 | Tactic | Gnomon takes his first turn on the first tick of his engagement, whatever his SPD. |
 | Shadow Step | 2 | 3 | — | Gnomon moves to his shadow hex before engagements start (dodges Engages aimed at his old hex). |
 
 ### Mother Sprue
@@ -263,7 +265,7 @@ is already hurt.
 | Card | Cost | Init | Keywords | Effect |
 |---|---|---|---|---|
 | Circling | 2 | 6 | Engage (2, 40) | Only targets a hero below 60% HP. |
-| Carrion Call | 1 | 3 | Reveal | Reveal every enemy hero below 50% HP, anywhere. |
+| Count the Bones | 1 | 3 | — | Gain 3 Beads. |
 | Sum of Debts | 3 | 8 | Join (2) | His first turn in that engagement is a Reckon. |
 
 ## Mid
@@ -310,7 +312,7 @@ part of the board.
 
 | Card | Cost | Init | Keywords | Effect |
 |---|---|---|---|---|
-| Compass Rose | 1 | 1 | Reveal | Look at 2 random cards in the opponent's hand. |
+| Triangulate | 1 | 1 | — | An enemy hero within 4 hexes counts as standing on a Surveyed hex this phase. |
 | Here Be Dragons | 3 | 6 | Engage (3, 45) | Only targets a hero on a hex she has Surveyed. |
 | Contour Line | 2 | 3 | — | Draw a line of 3 hexes; enemy heroes cannot Roam across it this phase. |
 
@@ -466,8 +468,8 @@ ahead.
 - **Fight · Stoop** (every 3rd turn): 150% DMG to the fastest enemy, which
   loses 3 SPD.
 - **Ultimate · Falconer's Gambit** (Card, 3): *Falconer's Gambit* costs 3,
-  initiative 3: reveal the whole map until the next map tick, and her Engage
-  reach is 4 this phase.
+  initiative 3: her Engage and Join reach is 4 this phase, and the falcon lets
+  her target heroes she cannot see.
 
 | Card | Cost | Init | Keywords | Effect |
 |---|---|---|---|---|
@@ -549,7 +551,7 @@ source.
 | Skirmish | 3 | 5 | Engage (1, 50) | The plain engage. |
 | Reinforce | 2 | 6 | Join (2) | — |
 | Fall Back | 1 | 2 | — | Engage cards with a later initiative cannot target that hero this phase. |
-| Ward | 1 | 1 | Reveal | Reveal a hex and its neighbours. |
+| Press the Attack | 1 | 4 | Tactic | Allies in that engagement deal +20% DMG for the first 15 ticks. |
 | Second Wind | 2 | 8 | — | After all engagements, heal that hero 25%. |
 | Hold the Line | 2 | 3 | — | An allied tower takes half damage until the next fight phase. |
 
@@ -562,8 +564,8 @@ source.
 3. **Map-phase engagements.** The Mantis's Pilgrimage breaks the "fights only
    happen in the fight phase" rule. Too much, or exactly the kind of exception
    ultimates are for?
-4. **Hand interaction.** Compass Rose, Ephemeris and Lacuna let you see or
-   cancel the opponent's cards. Fun reads, or too much against the blind,
+4. **Hand interaction.** Ephemeris and Lacuna let you see or cancel the
+   opponent's cards. Fun reads, or too much against the blind,
    simultaneous commit?
 5. **Theme.** Keep the "ball at the end of the world" thread, or should each
    role or faction have its own visual family?
