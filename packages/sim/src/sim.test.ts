@@ -69,9 +69,8 @@ describe('board', () => {
     }
   });
 
-  it('is point-symmetric between the sides', () => {
-    // The half turn swaps the rims: side 1's top is side 0's bot, seen from the other corner.
-    for (const lane of [0, 1, 2] as const) expect([...LANES[lane]].reverse()).toEqual(LANES[(2 - lane) as 0 | 1 | 2].map(mirror));
+  it('mirrors the sides across the river', () => {
+    for (const lane of Object.values(LANES)) expect([...lane].reverse()).toEqual(lane.map(mirror));
     for (const s of STRUCTURE_SITES.filter((x) => x.side === 0)) {
       expect(STRUCTURE_SITES.some((t) => t.side === 1 && t.kind === s.kind && t.cell === mirror(s.cell))).toBe(true);
     }

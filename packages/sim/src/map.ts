@@ -30,6 +30,7 @@ export function mapTick(s: MatchState): void {
     }
   }
   for (const h of s.heroes) if (alive(h)) walk(s, h, vis[h.side]);
+  laning(s);
   for (const h of s.heroes) {
     const ability = heroDef(h.id).map;
     if (alive(h) && s.mapTick >= h.mapReadyAt && mapOp(s, h, ability.op, h.cell)) {
@@ -101,6 +102,40 @@ function laneGoal(s: MatchState, h: Hero, lane: LaneId, vis: boolean[]): number 
   let front = 0;
   for (let k = 1; k <= limit; k++) if (own(k)) front = k;
   return cell(Math.max(front, Math.min(limit, lane === 1 ? 3 : 4)));
+}
+
+/**
+ * Laning: a non-jungler standing on a lane cell with no allied minions on it
+ * or further ahead along that lane is exposed. Every enemy hero on its cell
+ * gets a free hit, and it withdraws a cell towards home. Everyone exposed is
+ * found first, so two heroes caught out together trade hits evenly.
+ */
+function laning(s: MatchState): void {
+  const exposed = s.heroes.filter((h) => alive(h) && h.role !== 'jungle' && h.cell !== CORE[0] && h.cell !== CORE[1]
+    && heroesOn(s, h.cell, foe(h.side)).length > 0 && uncovered(s, h));
+  const hits = exposed.map((h) => heroesOn(s, h.cell, foe(h.side)).map((e) => ({ by: e, amount: mitigate(stats(e).dmg, stats(h).res) })));
+  exposed.forEach((h, i) => {
+    const lane = LANES_AT[h.cell]![0]!;
+    const path = LANES[lane];
+    const pos = path.indexOf(h.cell);
+    const back = path[pos + (h.side === 0 ? -1 : 1)];
+    for (const { amount } of hits[i]!) {
+      h.hp -= amount;
+      s.events.push({ type: 'hurt', uid: h.uid, amount, by: 'hero' });
+    }
+    if (h.hp <= 0) kill(s, h, hits[i]!.map((x) => x.by).filter(alive));
+    else if (back !== undefined) h.cell = back;
+  });
+}
+
+/** No allied minions on the hero's cell or ahead of it, on any lane through that cell. */
+function uncovered(s: MatchState, h: Hero): boolean {
+  const lanes = LANES_AT[h.cell]!;
+  if (lanes.length === 0) return false;
+  return lanes.every((lane) => {
+    const pos = LANES[lane].indexOf(h.cell);
+    return !s.minions.some((m) => m.lane === lane && m.side === h.side && m.n > 0 && (h.side === 0 ? m.pos >= pos : m.pos <= pos));
+  });
 }
 
 /**

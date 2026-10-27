@@ -15,6 +15,8 @@ where the design left a hole; every number lives in
   the outer tower on the rim corner, then 3 battleground cells to the enemy's
   outer tower. Mid: 1 empty cell, then the outer tower, then the single
   contested centre cell.
+- The sides are mirror images across the river, so every lane and camp is
+  equal ground.
 - Everything off the lanes is jungle, split by the river (the two cells
   equidistant from both cores). **(gap fill)** Each side has 4 camps, two in
   each half of the jungle, of 4 creeps that refill 40 ticks after being cleared.
@@ -43,6 +45,11 @@ then free minions march, then camps refill, waves spawn, cards are drawn.
   hold at their outer tower; they only step under an enemy tower while their
   own minions are there. Junglers walk to the nearest camp they believe is up
   (aggressive ones count enemy camps too). Bot duo shares the lane.
+- **Laning**: a non-jungler on a lane cell with no allied minions on it or
+  further ahead along the lane is exposed. Each enemy hero on that cell gets a
+  free hit on it (its DMG against the hero's RES), and it withdraws one cell
+  towards home. Laners walk back up behind their wave, so lanes rock back and
+  forth with the waves and structures wear down.
 - **Retreat**: below 40% HP (passive) or 20% (aggressive), a hero walks home on
   the next tick. **(gap fill)** The own core heals 25% max HP per tick; the hero
   heads back out at full HP. Dead heroes respawn at the core after 15 ticks.
@@ -55,8 +62,8 @@ then free minions march, then camps refill, waves spawn, cards are drawn.
   and the client both only ever get this view (`viewFor`).
 - **XP**: a minion or creep death gives 1 XP to each enemy hero on its cell
   plus 1 shared between them; hero kills 10 + 10 shared; a fallen tower 10
-  to every enemy hero. Each point: +1 DMG, +10 HP, +1 RES. Shared XP is
-  stored in 60ths so splits stay exact.
+  to every enemy hero. Every 10 XP: +1 DMG, +10 HP, +1 RES (a tenth of the
+  original rate). Shared XP is stored in 60ths so splits stay exact.
 - Every 10 ticks both sides draw; every 50 ticks the fight phase starts.
   **(gap fill)** At 3000 ticks the side with more structure HP left wins.
 

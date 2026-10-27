@@ -7,8 +7,9 @@ import type { LaneId, Side } from './types.ts';
  * runs straight across. Everything here is static, so it lives outside
  * MatchState and is computed once.
  *
- * Cells are indexed in (r, q) order, which makes the 180-degree rotation
- * that swaps the two sides a simple `mirror(i) = N - 1 - i`.
+ * The two sides are mirror images across the river: reflecting (q, r) to
+ * (r, q) swaps the cores and maps every lane onto itself, so each side's top
+ * laner faces the other's on equal ground.
  */
 export const RADIUS = 4;
 
@@ -33,7 +34,7 @@ export const N_CELLS = CELLS.length;
 
 const INDEX = new Map(CELLS.map((c, i) => [`${c.q},${c.r}`, i]));
 export const cellAt = (q: number, r: number): number => INDEX.get(`${q},${r}`) ?? -1;
-export const mirror = (i: number): number => N_CELLS - 1 - i;
+export const mirror = (i: number): number => cellAt(CELLS[i]!.r, CELLS[i]!.q);
 
 export const distance = (a: number, b: number): number => {
   const A = CELLS[a]!, B = CELLS[b]!;
@@ -136,7 +137,7 @@ export const CAMP_SITES: readonly { cell: number; owner: Side }[] = (() => {
 
 /**
  * Shortest-path step tables. BFS from every target; ties broken by
- * direction order, rotated half a turn for side 1 so both sides walk mirror
+ * direction order, reflected for side 1 so both sides walk mirror
  * images of each other's routes.
  */
 const DIST: readonly Int8Array[] = CELLS.map((_, target) => {
@@ -154,7 +155,7 @@ export function stepToward(from: number, to: number, side: Side): number {
   if (from === to) return from;
   const d = DIST[to]!;
   for (let k = 0; k < 6; k++) {
-    const n = NEIGHBOURS[from]![(k + 3 * side) % 6]!;
+    const n = NEIGHBOURS[from]![side === 0 ? k : 5 - k]!;
     if (n >= 0 && d[n] === d[from]! - 1) return n;
   }
   return from;

@@ -32,9 +32,10 @@ export const AGGRESSIVE_LENGTH = 5;
 
 /**
  * XP is stored in 60ths of a point: shared XP split between up to six heroes
- * stays exact. Each whole point is +1 DMG, +10 HP, +1 RES.
+ * stays exact. Every XP_PER_STAT points give +1 DMG, +10 HP and +1 RES.
  */
 export const XP_UNIT = 60;
+export const XP_PER_STAT = 10;
 export const XP_MINION = 1;
 export const XP_HERO = 10;
 export const XP_TOWER = 10;

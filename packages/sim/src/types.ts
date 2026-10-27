@@ -182,7 +182,7 @@ export type GameEvent =
   | { type: 'draw'; side: Side }
   | { type: 'order'; side: Side; uid: number; order: 'stance' | 'roam' | 'ult' }
   | { type: 'minions'; cell: number; side: Side; died: number }
-  | { type: 'hurt'; uid: number; amount: number; by: 'minion' | 'tower' | 'creep' | 'card' }
+  | { type: 'hurt'; uid: number; amount: number; by: 'minion' | 'tower' | 'creep' | 'card' | 'hero' }
   | { type: 'heal'; uid: number; amount: number }
   | { type: 'structure'; index: number; amount: number }
   | { type: 'fall'; index: number }

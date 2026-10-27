@@ -1,5 +1,5 @@
 import { CORE } from './board.ts';
-import { RESPAWN_TICKS, XP_HERO, XP_UNIT, heroDef } from './content.ts';
+import { RESPAWN_TICKS, XP_HERO, XP_PER_STAT, XP_UNIT, heroDef } from './content.ts';
 import type { Hero, MatchState, Side, Stats } from './types.ts';
 
 /** Small shared helpers: hero arithmetic every phase relies on. */
@@ -10,14 +10,14 @@ export const idiv = (a: number, b: number): number => Math.floor(a / b);
 export const alive = (h: Hero): boolean => h.respawnAt < 0;
 export const atBase = (h: Hero): boolean => h.cell === CORE[h.side];
 
-/** Base stats grown by XP (each point: +1 DMG, +10 HP, +1 RES) and any ascension. */
+/** Base stats grown by XP (every XP_PER_STAT points: +1 DMG, +10 HP, +1 RES) and any ascension. */
 export function stats(h: Hero): Stats {
   const def = heroDef(h.id);
-  const points = idiv(h.xp, XP_UNIT);
+  const points = idiv(h.xp, XP_UNIT * XP_PER_STAT);
   const bonus = h.ascended && def.ult.kind === 'ascension' ? def.ult.bonus : {};
   return {
     dmg: def.stats.dmg + points + (bonus.dmg ?? 0),
-    hp: def.stats.hp + idiv(h.xp * 10, XP_UNIT) + (bonus.hp ?? 0),
+    hp: def.stats.hp + idiv(h.xp * 10, XP_UNIT * XP_PER_STAT) + (bonus.hp ?? 0),
     res: def.stats.res + points + (bonus.res ?? 0),
     spd: def.stats.spd + (bonus.spd ?? 0),
   };
