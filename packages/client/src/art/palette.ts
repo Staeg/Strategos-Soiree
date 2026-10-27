@@ -28,6 +28,7 @@ export function inks(side: Side): Record<string, string> {
     t: hex(team.main), d: hex(team.dark), l: hex(team.light),
     m: '#b9c3cf', M: '#5d6778', w: '#8a5a3b', g: hex(GOLD), c: hex(CREAM),
     h: '#ffffff', p: hex(VIOLET), P: '#5b3d8c', L: hex(LEAF), D: hex(DUSK), r: hex(BLOOD),
+    a: hex(AMBER), b: '#b07a3c', e: '#5d7e93', n: '#262052', q: '#eaa3bd', R: '#7d2341', x: '#07050b', y: '#efe3c2',
   };
 }
 

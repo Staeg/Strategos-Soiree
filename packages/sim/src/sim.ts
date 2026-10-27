@@ -1,14 +1,15 @@
 import { CAMP_SITES, CORE, N_CELLS, STRUCTURE_SITES, distance } from './board.ts';
-import { resolveNext, settle } from './cards.ts';
+import { resolveNext } from './cards.ts';
 import {
-  CAMP_SIZE, CARDS_KEPT, CARD_OWNER, DRAW_EVERY, FIGHT_EVERY, LINEUP, MANA_KEPT, MANA_PER_PHASE, MAX_MAP_TICKS,
-  ORDERS_PER_PHASE, STRUCTURE_HP, buildDeck, cardDef, heroDef, type HeroId,
+  CAMP_SIZE, CARDS_KEPT, CARD_OWNER, DRAW_EVERY, FIGHT_EVERY, INTERLEAVE, MANA_KEPT, MANA_PER_PHASE, MAX_MAP_TICKS,
+  ORDERS_PER_PHASE, STRUCTURE_HP, buildDeck, cardDef, heroDef, lineups, type HeroId,
 } from './content.ts';
-import { clashStep, startClash } from './fight.ts';
+import { clashStep, freshFx, startClash, triggerOp } from './fight.ts';
 import { alive, maxHp } from './hero.ts';
-import { mapOp, mapTick } from './map.ts';
+import { commandOp, mapTick } from './map.ts';
+import { addCharge } from './powers.ts';
 import { seedRng, shuffle } from './rng.ts';
-import type { Command, FightFx, Hero, MatchState, Side, SideState } from './types.ts';
+import type { Command, Hero, MatchState, Side, SideState } from './types.ts';
 
 /**
  * The whole game is `step(state, commands) -> state`: pure, integer-only and
@@ -17,30 +18,28 @@ import type { Command, FightFx, Hero, MatchState, Side, SideState } from './type
  * see `Phase`.
  */
 
-const freshFx = (): FightFx => ({
-  engagement: -1, shield: 0, dmgPct: 0, surgePct: 0, surgeUntil: 0, res: 0, spd: 0, focus: -1, evadeAfter: 99, afterHeal: 0, nextTurn: 0, turns: 0,
-});
-
 const freshOrders = () => ({ ...ORDERS_PER_PHASE });
 
-export function createMatch(seed: number, lineups: readonly [readonly HeroId[], readonly HeroId[]] = [LINEUP, LINEUP]): MatchState {
+/** Without explicit lineups, the seed decides which of each role's two heroes plays for which side. */
+export function createMatch(seed: number, teams: readonly [readonly HeroId[], readonly HeroId[]] = lineups(seed)): MatchState {
   const rng = { map: seedRng(seed, 1), fight: seedRng(seed, 2), cards: seedRng(seed, 3) };
   const heroes: Hero[] = [];
   for (const side of [0, 1] as const) {
-    lineups[side].forEach((id) => {
+    teams[side].forEach((id) => {
       const def = heroDef(id);
       const h: Hero = {
         uid: heroes.length, side, role: def.role, id, cell: CORE[side], hp: 0, xp: 0, stance: 'passive',
         retreating: false, roam: -1, respawnAt: -1, mapReadyAt: 0,
-        ultReadyAt: 'cooldown' in def.ult ? def.ult.cooldown : 0, ascended: false, fx: freshFx(),
+        ultReadyAt: 'cooldown' in def.ult ? def.ult.cooldown : 0, ascended: false,
+        charge: 0, grown: { dmg: 0, spd: 0 }, boons: [], origin: { hp: 0, cell: CORE[side], respawnAt: -1 }, fx: freshFx(),
       };
       h.hp = maxHp(h);
       heroes.push(h);
     });
   }
   const side = (s: Side): SideState => ({
-    mana: 0, hand: [], deck: shuffle(rng.cards, buildDeck(lineups[s])), discard: [], plays: [], committed: false,
-    orders: freshOrders(), campIntel: CAMP_SITES.map(() => -1),
+    mana: 0, hand: [], deck: shuffle(rng.cards, buildDeck(teams[s])), discard: [], plays: [], committed: false,
+    orders: freshOrders(), campIntel: CAMP_SITES.map(() => -1), blindUntil: 0,
   });
   return {
     seed: seed >>> 0, seq: 0, mapTick: 0, fightPhase: 0, fightTick: 0, phase: 'map',
@@ -48,7 +47,7 @@ export function createMatch(seed: number, lineups: readonly [readonly HeroId[], 
     minions: [],
     structures: STRUCTURE_SITES.map((st) => ({ ...st, hp: STRUCTURE_HP[st.kind], maxHp: STRUCTURE_HP[st.kind], guardedUntil: 0 })),
     camps: CAMP_SITES.map((c) => ({ ...c, creeps: CAMP_SIZE, respawnAt: -1 })),
-    wards: [], engagements: [], pending: [],
+    wards: [], engagements: [], pending: [], initiative: -1,
     sides: [side(0), side(1)],
     rng, winner: null, events: [],
   };
@@ -65,7 +64,13 @@ export function advance(s: MatchState, commands: readonly Command[]): void {
   s.events = [];
   s.seq++;
   if (s.phase === 'over') return;
+  const cells = s.heroes.map((h) => h.cell);
   for (const c of commands) apply(s, c);
+  phaseStep(s);
+  deathTriggers(s, cells);
+}
+
+function phaseStep(s: MatchState): void {
   switch (s.phase) {
     case 'map':
       mapTick(s);
@@ -77,16 +82,38 @@ export function advance(s: MatchState, commands: readonly Command[]): void {
     case 'plan':
       if (s.sides[0].committed && s.sides[1].committed) startResolve(s);
       return;
-    case 'resolve':
+    case 'resolve': {
       resolveNext(s);
-      if (s.pending.length === 0) {
-        if (s.engagements.some((e) => !e.over)) startClash(s);
-        else endFightPhase(s);
-      }
+      const fresh = s.engagements.some((e) => !e.over && !e.started);
+      if (fresh && (INTERLEAVE || s.pending.length === 0)) startClash(s);
+      else if (s.pending.length === 0) endFightPhase(s);
       return;
+    }
     case 'clash':
-      if (!clashStep(s)) endFightPhase(s);
+      if (clashStep(s)) return;
+      if (s.pending.length === 0) return endFightPhase(s);
+      s.phase = 'resolve';
+      s.events.push({ type: 'phase', phase: 'resolve' });
       return;
+  }
+}
+
+/** Death-triggered ultimates (Final Count): any hero dying within range this step, wherever it stood. */
+function deathTriggers(s: MatchState, cells: number[]): void {
+  for (const e of s.events) {
+    if (e.type !== 'death') continue;
+    for (const h of s.heroes) {
+      const ult = heroDef(h.id).ult;
+      if (ult.kind !== 'trigger' || ult.when.on !== 'death' || h.uid === e.uid || !alive(h) || s.fightPhase < h.ultReadyAt) continue;
+      if (distance(h.cell, cells[e.uid]!) > ult.when.range) continue;
+      if (ult.op.op === 'tally') {
+        const store = heroDef(h.id).map.op;
+        addCharge(s, h, ult.op.n, 'store' in store && store.store !== undefined ? store.store : Infinity);
+      }
+      triggerOp(s, h, h, ult.op);
+      h.ultReadyAt = s.fightPhase + ult.cooldown;
+      s.events.push({ type: 'order', side: h.side, uid: h.uid, order: 'ult' });
+    }
   }
 }
 
@@ -120,7 +147,7 @@ function apply(s: MatchState, c: Command): void {
       const ult = h && heroDef(h.id).ult;
       if (s.phase !== 'map' || !h || !alive(h) || ult?.kind !== 'command' || s.fightPhase < h.ultReadyAt) return;
       if (!(c.cell >= 0 && c.cell < N_CELLS) || distance(h.cell, c.cell) > ult.range) return;
-      if (!mapOp(s, h, ult.op, c.cell)) return;
+      if (!commandOp(s, h, ult.op, c.cell)) return;
       h.ultReadyAt = s.fightPhase + ult.cooldown;
       s.events.push({ type: 'order', side: c.side, uid: h.uid, order: 'ult' });
       return;
@@ -131,8 +158,8 @@ function apply(s: MatchState, c: Command): void {
       if (s.phase !== 'plan' || me.committed || !id || !source) return;
       const def = cardDef(id);
       if (def.cost > me.mana || (CARD_OWNER[id] !== undefined && CARD_OWNER[id] !== source.id)) return;
-      const wants = def.aim === 'enemy' || def.aim === 'ally' ? 'hero' : def.aim === 'tower' ? 'cell' : 'none';
-      if (c.target.kind !== wants) return;
+      const wants = def.aim === 'enemy' || def.aim === 'ally' ? ['hero'] : def.aim === 'tower' ? ['cell'] : def.aim === 'siege' ? ['hero', 'cell'] : ['none'];
+      if (!wants.includes(c.target.kind)) return;
       me.mana -= def.cost;
       me.hand.splice(c.handIndex, 1);
       me.plays.push({ side: c.side, card: id, source: source.uid, target: c.target });
@@ -189,7 +216,10 @@ function startPlan(s: MatchState): void {
     me.plays = [];
     me.committed = false;
   }
-  for (const h of s.heroes) h.roam = -1;
+  for (const h of s.heroes) {
+    h.roam = -1;
+    h.origin = { hp: h.hp, cell: h.cell, respawnAt: h.respawnAt };
+  }
   s.events.push({ type: 'phase', phase: 'plan' });
 }
 
@@ -197,13 +227,13 @@ function startPlan(s: MatchState): void {
 function startResolve(s: MatchState): void {
   const all = s.sides.flatMap((me) => me.plays.map((p) => cardDef(p.card).initiative));
   s.pending = [...new Set(all)].sort((a, b) => a - b);
+  s.initiative = -1;
   s.phase = 'resolve';
   s.events.push({ type: 'phase', phase: 'resolve' });
   if (s.pending.length === 0) endFightPhase(s);
 }
 
 function endFightPhase(s: MatchState): void {
-  settle(s);
   for (const h of s.heroes) h.fx = freshFx();
   for (const me of s.sides) {
     me.plays = [];

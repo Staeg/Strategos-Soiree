@@ -1,6 +1,6 @@
 import type { RngState } from './rng.ts';
 import type { StructureKind } from './board.ts';
-import type { CardId, HeroId } from './content.ts';
+import type { ArmedOp, CardId, HeroId } from './content.ts';
 
 export type Side = 0 | 1;
 /** 0 top, 1 mid, 2 bot. */
@@ -24,26 +24,70 @@ export interface Stats {
   spd: number;
 }
 
-/** Everything about a hero that only lasts for the current fight phase. */
+/** A card effect waiting on its hero for the start of the hero's next engagement this phase. */
+export interface Armed {
+  op: ArmedOp;
+  /** The card's target hero, or -1. */
+  target: number;
+}
+
+/**
+ * Everything about a hero that only lasts for the current fight phase. The
+ * fields under "this engagement" are wiped whenever an engagement ends, so a
+ * hero fighting twice in a phase starts its second fight clean.
+ */
 export interface FightFx {
   /** Engagement id, or -1. */
   engagement: number;
   shield: number;
+  /** Engage cards with a higher initiative than this cannot target the hero. */
+  evadeAfter: number;
+  /** Never pulled into an engagement as a bystander. */
+  aloof: boolean;
+  /** Card effects waiting for the hero's next engagement. */
+  armed: Armed[];
+  /** The hero's next turn is its fight ability. */
+  opening: boolean;
+
+  // this engagement
   /** Additive percent bonuses; `surgePct` only until fight tick `surgeUntil`. */
   dmgPct: number;
   surgePct: number;
   surgeUntil: number;
   res: number;
   spd: number;
-  /** Uid this hero's basic attacks prefer, or -1. */
+  /** Uid this hero's basic attacks prefer until fight tick `focusUntil`, or -1. */
   focus: number;
-  /** Engage cards with a higher initiative than this cannot target the hero. */
-  evadeAfter: number;
-  /** Percent of max HP healed once every engagement is over. */
-  afterHeal: number;
-  /** Fight tick of the hero's next turn, and how many turns it has had. */
+  focusUntil: number;
+  /** Speed lost, in percent and flat, until fight tick `slowUntil`. */
+  slowPct: number;
+  slowSpd: number;
+  slowUntil: number;
+  /** Extra percent damage taken until fight tick `exposeUntil`. */
+  exposePct: number;
+  exposeUntil: number;
+  /** Percent DMG of the hero's next attack, or 0. */
+  firstHitPct: number;
+  /** Leaves the engagement after this fight tick, or -1. */
+  fadeAt: number;
+  /** The next turn is spent attacking an ally. */
+  swooned: boolean;
+  /** Fight-ability uses still to be lost. */
+  muted: number;
+  /** Cannot die until the engagement ends; loses `burn`% max HP every fight tick. */
+  undying: boolean;
+  burn: number;
+  /** Fight tick of the hero's next turn, of its last one, and how many turns it has had. */
   nextTurn: number;
+  lastTurn: number;
   turns: number;
+}
+
+/** A map-phase favour from a card, until map tick `until`. */
+export interface Boon {
+  kind: 'clear' | 'rallyCell' | 'rallyLane' | 'cadence';
+  value: number;
+  until: number;
 }
 
 export interface Hero {
@@ -67,6 +111,13 @@ export interface Hero {
   ultReadyAt: number;
   /** Ascensions are one-time: set once reached. */
   ascended: boolean;
+  /** The hero's own resource (Beads, Void, Scrimshaw); its meaning is the hero's. */
+  charge: number;
+  /** Permanent growth from abilities, on top of base stats and XP. */
+  grown: { dmg: number; spd: number };
+  boons: Boon[];
+  /** Where the hero stood when the fight phase began, for Rewind. */
+  origin: { hp: number; cell: number; respawnAt: number };
   fx: FightFx;
 }
 
@@ -116,14 +167,28 @@ export interface Play {
   card: CardId;
   source: number;
   target: Target;
+  /** Cancelled before it resolved. */
+  cancelled?: boolean;
+}
+
+/** Lane minions fighting inside an engagement; each acts on the same beat. */
+export interface Squad {
+  side: Side;
+  hp: number[];
+  nextTurn: number;
 }
 
 export interface Engagement {
   id: number;
   cell: number;
   members: number[];
+  squads: Squad[];
   /** Fight tick at which it ends. */
   length: number;
+  /** Nobody may join. */
+  sealed: boolean;
+  /** Joined its clash: fighting or fought. */
+  started: boolean;
   over: boolean;
 }
 
@@ -138,6 +203,8 @@ export interface SideState {
   orders: { stance: number; roam: number };
   /** Per camp: map tick this side last saw it empty, or -1 if believed up. */
   campIntel: number[];
+  /** Until this map tick the side sees only the cells its units stand on. */
+  blindUntil: number;
 }
 
 export interface MatchState {
@@ -155,8 +222,9 @@ export interface MatchState {
   camps: Camp[];
   wards: Ward[];
   engagements: Engagement[];
-  /** Initiatives still to resolve this fight phase, ascending. */
+  /** Initiatives still to resolve this fight phase, ascending, and the one last resolved (-1 before any). */
   pending: number[];
+  initiative: number;
   sides: [SideState, SideState];
   /** Separate streams so card shuffles never depend on how a fight went, and vice versa. */
   rng: { map: RngState; fight: RngState; cards: RngState };
@@ -175,7 +243,7 @@ export type Command =
   /** `discard` lists hand indices to drop first if more than CARDS_KEPT stay unplayed. */
   | { type: 'commit'; side: Side; discard: number[] };
 
-export type Fizzle = 'source' | 'target' | 'reach' | 'evaded' | 'engaged' | 'none';
+export type Fizzle = 'source' | 'target' | 'reach' | 'evaded' | 'engaged' | 'cancelled' | 'none';
 
 export type GameEvent =
   | { type: 'phase'; phase: Phase }
@@ -193,6 +261,8 @@ export type GameEvent =
   | { type: 'card'; play: Play; fizzle: Fizzle | null }
   | { type: 'engage'; id: number; cell: number; members: number[] }
   | { type: 'act'; uid: number; kind: 'attack' | 'ability' | 'ult'; hits: Hit[] }
+  /** Minions fighting in engagement `id` strike; hits on minions carry uid -1. */
+  | { type: 'squad'; id: number; side: Side; hits: Hit[] }
   | { type: 'disengage'; id: number };
 
 export interface Hit {

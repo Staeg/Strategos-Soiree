@@ -1,6 +1,9 @@
-# First roster: 20 heroes (draft for discussion)
+# First roster: 20 heroes
 
-Status: brainstorm, not implemented. Numbers are first guesses meant to be
+Status: ten are implemented, with Stag's changes folded into their entries
+below: the Tallow Duchess, Gnomon, Vespertine, Carrion Abacus, Moth Tenor,
+Lacuna, Saint Halyard, Vintner Ghast, Scrimshander and Brass Reliquary. The
+other ten are still a brainstorm. Numbers are first guesses meant to be
 argued with.
 
 ## The look, in one line
@@ -23,9 +26,18 @@ roster both depend on, so they are worth agreeing on early.
   visible enemy hero within R hexes. Any other heroes on either hex are pulled
   in. L is the base fight-tick count (average 50 across the roster).
   An enemy in aggressive stance counts as 1 hex closer.
-- **Join (reach R)**: this hero enters an allied engagement within R hexes.
-  A hero in aggressive stance has 1 less reach to Join.
-- **Tactic**: changes an engagement this hero is in (or joins this phase).
+- **Engagements resolve at their initiative**: everything an initiative
+  starts is fought out before the next initiative, so a hero can fight more
+  than once a phase. Engages at the same initiative that share a hero merge
+  into one engagement as long as all of them added together.
+- **Next engagement**: a card that affects an engagement (Join, Tactic,
+  anything that changes a fight) acts on its hero's next engagement that
+  phase, whoever starts it.
+- **Join (reach R)**: this hero enters its next allied engagement within R
+  hexes. A hero in aggressive stance has 1 less reach to Join.
+- **Tactic**: changes this hero's next engagement.
+- Nothing waits for "after all engagements": such cards act at their own
+  initiative.
 - **No reveal cards.** Cards resolve simultaneously and the map moves on
   before you could use what they show, so vision lives on map abilities
   and Command ultimates only.
@@ -44,9 +56,9 @@ roster both depend on, so they are worth agreeing on early.
     never enters the deck and goes back on cooldown when played.
   - *Trigger*: fires by itself in a fight when its condition is met.
   - *Ascension*: a one-time transformation reached by playing well.
-- **Deck**: each hero brings its 3 cards ×2 (30 cards), plus 2 copies each of
-  the 6 staples at the end of this file (42 total). With 5 draws per map
-  phase and 5 cards saved, a full hand is about 10.
+- **Deck**: one copy of each hero's 3 cards and of each of the 6 staples
+  (21 total). The discard pile reshuffles when the draw pile runs out. With
+  5 draws per map phase and 5 cards saved, a full hand is about 10.
 
 ## Roster at a glance
 
@@ -62,7 +74,7 @@ roster both depend on, so they are worth agreeing on early.
 | Jungle | Carrion Abacus | 850 | 140 | 10 | 14 | Assassin, scavenger |
 | Mid | Glasswright | 750 | 150 | 10 | 10 | Burst mage, fragile |
 | Mid | The Cartographer | 800 | 105 | 15 | 11 | Vision, map control |
-| Mid | Moth Tenor | 850 | 120 | 15 | 13 | Charm, steals minions |
+| Mid | Moth Tenor | 850 | 80 | 15 | 13 | Charm, steals minions |
 | Mid | Lacuna | 700 | 130 | 20 | 9 | Counterplay, erasure |
 | Support | Saint Halyard | 1000 | 60 | 30 | 9 | Vision, rescues |
 | Support | Vintner Ghast | 850 | 70 | 15 | 11 | Healer, minion fuel |
@@ -73,7 +85,7 @@ roster both depend on, so they are worth agreeing on early.
 | Carry | The Twinned | 900 | 60 | 15 | 20 | Two bodies, many hits |
 | Carry | Brass Reliquary | 850 | 135 | 15 | 6 | Siege artillery |
 
-Averages: HP 995, DMG 104, RES 20, SPD 10.5. 13 of 20 map abilities touch
+Averages: HP 995, DMG 102, RES 20, SPD 10.5. 13 of 20 map abilities touch
 minions (fuel, staggering, conversion, theft, funnelling).
 
 ---
@@ -113,7 +125,7 @@ flame for a head. Ivory and amber; the flame flickers between two frames.
 ultimate to keep her standing.
 
 - **Map · Drip** (every 5 ticks): melts one *allied* minion on her hex, healing
-  60 HP and gaining +2 DMG until the next fight phase (stacks).
+  60 HP and gaining +2 DMG for good.
 - **Fight · Gutter** (every 3rd turn): 150% DMG to her target, healing half
   of it. If she is above 50% HP, she also loses 5% of her max HP.
 - **Ultimate · Last Light** (Trigger, 4): the first time she would drop
@@ -125,7 +137,7 @@ ultimate to keep her standing.
 |---|---|---|---|---|
 | Snuff | 3 | 4 | Engage (1, 30) | A short, early, brutal fight. |
 | Hot Wax | 2 | 6 | Tactic | Her target has its SPD halved for the first 20 ticks. |
-| Rekindle | 1 | 1 | — | Heal 25% max HP before any engagements. |
+| Rekindle | 1 | 1 | — | Heal 25% max HP. |
 
 ### Gnomon
 `HP 1000 · DMG 110 · RES 20 · SPD 12`
@@ -137,19 +149,19 @@ in a fixed direction regardless of where he faces. Bone white and slate.
 *Plays like:* a duelist who wants clean one-on-ones and punishes fast heroes.
 
 - **Map · Long Shadow** (always): his shadow covers the next lane hex toward
-  the enemy. Enemy minions entering it pause for 1 tick, so waves arrive at
-  him staggered and thin.
+  the enemy. Each enemy minion standing in it fails to move with 50%
+  probability every tick, so waves arrive at him staggered and thin.
 - **Fight · Eclipse Cut** (every 3rd turn): 130% DMG; if the target's SPD is
   higher than his, it loses its next turn.
-- **Ultimate · Rewind** (Card, 4): *Rewind* costs 4, initiative 9: after
-  every engagement this phase has resolved, Gnomon's HP is set back to what
-  it was at the start of the fight phase. A dead Gnomon is rewound too.
+- **Ultimate · Rewind** (Card, 4): *Rewind* costs 4, initiative 9: Gnomon's
+  HP and position are set back to what they were at the start of the fight
+  phase. A dead Gnomon is rewound too.
 
 | Card | Cost | Init | Keywords | Effect |
 |---|---|---|---|---|
 | High Noon | 2 | 5 | Engage (1, 50) | One target only: nobody else can Join this engagement. |
 | Hour Hand | 1 | 2 | Tactic | Gnomon takes his first turn on the first tick of his engagement, whatever his SPD. |
-| Shadow Step | 2 | 3 | — | Gnomon moves to his shadow hex before engagements start (dodges Engages aimed at his old hex). |
+| Shadow Step | 2 | 3 | — | Gnomon steps into his shadow hex (out of reach of Engages measured from his old hex). |
 
 ### Mother Sprue
 `HP 1300 · DMG 85 · RES 25 · SPD 7`
@@ -232,8 +244,9 @@ would be. Deep indigo with white single-pixel stars.
 *Plays like:* the reason fog of war matters. You know she's coming; you don't
 know where.
 
-- **Map · Dusk** (always): minions never reveal her. Enemies see her only on
-  or next to an enemy tower, or on the same hex as an enemy hero.
+- **Map · Dusk** (always): minions never reveal her, and she passes towers
+  unseen. Enemies see her only while she shares a hex with an enemy hero or
+  structure.
 - **Fight · Puncture** (every 2nd turn): 180% DMG to the lowest-HP enemy; if
   it kills, she takes another turn at once.
 - **Ultimate · Nightfall** (Card, 4): *Nightfall* costs 3, initiative 1:
@@ -243,8 +256,8 @@ know where.
 | Card | Cost | Init | Keywords | Effect |
 |---|---|---|---|---|
 | Out of the Dark | 2 | 2 | Engage (1, 25) | Very early, very short. |
-| Star Pin | 1 | 4 | Tactic | All allies attack a chosen enemy for the first 15 ticks. |
-| Fade | 1 | 7 | Tactic | Vespertine leaves her engagement after its 10th tick and returns to the nearest jungle hex. |
+| Star Pin | 1 | 4 | Tactic | In her next engagement, all allies attack a chosen enemy for the first 15 ticks. |
+| Fade | 1 | 7 | Tactic | Vespertine leaves her next engagement after its 10th tick and returns to the nearest jungle hex. |
 
 ### Carrion Abacus
 `HP 850 · DMG 140 · RES 10 · SPD 14`
@@ -257,16 +270,16 @@ is already hurt.
 
 - **Map · Glean** (every 4 ticks, aggressive stance only): kills an enemy
   minion on a lane hex next to him, takes its XP and slides a Bead (max 10).
-- **Fight · Reckon** (every 3rd turn): DMG + 15 per Bead to his target, then
-  clears his Beads.
+- **Fight · Reckon** (every 3rd turn): (1 + 0.15 × Beads) × DMG to his
+  target, then 5 Beads are spent.
 - **Ultimate · Final Count** (Trigger, 2): when any hero dies within 2 hexes
   of him, he gains 5 Beads and his next turn is a Reckon.
 
 | Card | Cost | Init | Keywords | Effect |
 |---|---|---|---|---|
 | Circling | 2 | 6 | Engage (2, 40) | Only targets a hero below 60% HP. |
-| Count the Bones | 1 | 3 | — | Gain 3 Beads. |
-| Sum of Debts | 3 | 8 | Join (2) | His first turn in that engagement is a Reckon. |
+| Count the Bones | 0 | 3 | — | Gain 3 Beads. |
+| Sum of Debts | 3 | 8 | Join (2) | His first turn in his next engagement is a Reckon. |
 
 ## Mid
 
@@ -317,7 +330,7 @@ part of the board.
 | Contour Line | 2 | 3 | — | Draw a line of 3 hexes; enemy heroes cannot Roam across it this phase. |
 
 ### Moth Tenor
-`HP 850 · DMG 120 · RES 15 · SPD 13`
+`HP 850 · DMG 80 · RES 15 · SPD 13`
 
 *Look:* a tall moth in a mantle of dusty wings, feathered antennae, holding a
 lantern; two ember dots for eyes. Ivory and pale gold, a faint dust trail.
@@ -326,18 +339,19 @@ lantern; two ember dots for eyes. Ivory and pale gold, a faint dust trail.
 themselves.
 
 - **Map · Aria** (every 6 ticks): one enemy minion on his hex or a
-  neighbouring hex switches sides.
+  neighbouring hex switches sides, and he gets the XP as if he had killed it.
 - **Fight · Swoon** (every 3rd turn): his target spends its next turn
   attacking one of its own allies (or skips, if alone).
-- **Ultimate · Aria of Many Rooms** (Card, 4): *Aria of Many Rooms* costs 4,
-  initiative 5: Swoon is cast at the start of every allied engagement within
-  3 hexes. His voice is present; he isn't, and can't be hit.
+- **Ultimate · Lantern Procession** (Card, 4): *Lantern Procession* costs 3,
+  initiative 3: up to 6 allied minions on or next to his hex follow him into
+  his next engagement and fight as combatants (100 HP, 25 DMG, 5 SPD each).
+  Enemies can hit them; survivors go back to the lane.
 
 | Card | Cost | Init | Keywords | Effect |
 |---|---|---|---|---|
-| Lure | 2 | 4 | Engage (2, 50) | Pulls the target onto his hex. |
-| Dust of Wings | 1 | 5 | Tactic | Every enemy has −3 SPD for the first 20 ticks. |
-| Lamp Season | 2 | 2 | — | Allied minions in mid hit twice as often next map phase. |
+| Lure | 2 | 4 | Engage (2, 50) | Fought on his hex. |
+| Dust of Wings | 1 | 5 | Tactic | In his next engagement, every enemy has −3 SPD for the first 20 ticks. |
+| Lamp Season | 2 | 2 | — | Allied minions in his lane hit twice as often next map phase. |
 
 ### Lacuna
 `HP 700 · DMG 130 · RES 20 · SPD 9`
@@ -349,19 +363,20 @@ colour.
 *Plays like:* the answer to whatever the opponent planned. Rewards reading
 your opponent.
 
-- **Map · Erase** (every 4 ticks): kills 2 enemy minions on its hex but gains
-  no XP; stores them as Void instead (max 12).
-- **Fight · Unmake** (every 3rd turn): DMG + 20 per Void to its target, which
-  also loses its next fight-ability use. Spends the Void.
+- **Map · Erase** (every 10 ticks): kills 2 enemy minions on its hex, for
+  the usual XP, and stores them as Void (max 12).
+- **Fight · Unmake** (every 3rd turn): no damage. Costs 2 Void per enemy in
+  the fight; its target loses its next fight-ability use. Without enough
+  Void, Lacuna attacks instead.
 - **Ultimate · Lacuna** (Card, 4): *Lacuna* costs 2, initiative 0: cancel the
-  highest-cost card the opponent played this phase (ties: the later
-  initiative).
+  highest-cost card the opponent played at a later initiative this phase
+  (ties: the later initiative).
 
 | Card | Cost | Init | Keywords | Effect |
 |---|---|---|---|---|
 | Negative Space | 3 | 6 | Engage (2, 50) | — |
 | Unwrite | 2 | 2 | — | An enemy hero within 3 hexes loses its map ability until the next fight phase. |
-| Silence Between | 1 | 9 | — | The opponent can save 1 fewer card this phase. |
+| Silence Between | 0 | 9 | — | The opponent can save 1 fewer card this phase (a random one goes). |
 
 ## Support
 
@@ -395,17 +410,17 @@ a tray floating at its shoulder. Wine red and spectral pink.
 *Plays like:* pours the wave into her carry. Strong sustain, a weaker lane.
 
 - **Map · Decant** (every 6 ticks): sacrifices an allied minion on her hex to
-  heal each allied hero on or next to it for 80.
+  heal each allied hero on or next to it for 80. The enemy gets no XP for it.
 - **Fight · Pour** (every 2nd turn): heals the ally with the lowest HP% for
-  150% of her DMG and gives them +2 SPD.
+  150% of her DMG and gives them +2 SPD for that engagement.
 - **Ultimate · Toast** (Trigger, 3): when an ally in her engagement would
   die, they are instead healed to 30% max HP.
 
 | Card | Cost | Init | Keywords | Effect |
 |---|---|---|---|---|
 | Spiked Cup | 2 | 6 | Engage (1, 50) | The target takes double damage for the first 10 ticks. |
-| Second Glass | 1 | 8 | — | After all engagements, allied heroes within 2 hexes heal 15%. |
-| Vintage | 2 | 3 | — | Allied minions on her hex hit twice as often next map phase. |
+| Second Glass | 1 | 8 | — | Allied heroes within 2 hexes heal 15%. |
+| Vintage | 2 | 9 | — | Allied minions on her hex hit twice as often next map phase. |
 
 ### Orrery
 `HP 950 · DMG 75 · RES 25 · SPD 8`
@@ -496,7 +511,7 @@ the Masterwork.
 | Card | Cost | Init | Keywords | Effect |
 |---|---|---|---|---|
 | Kill Line | 3 | 8 | Engage (1, 40) | The last engage of the phase. |
-| Bone Needle | 1 | 6 | Tactic | Her first attack in that engagement deals 200%. |
+| Bone Needle | 1 | 6 | Tactic | Her first attack in her next engagement deals 200%. |
 | Ivory Ward | 2 | 2 | — | Enemy Engage cards cannot target her this phase. |
 
 ### The Twinned
@@ -529,43 +544,41 @@ incense smoke from the barrel. Bronze and smoke grey.
 
 *Plays like:* slow and immobile, but every tower in reach is on a clock.
 
-- **Map · Bombard** (every 5 ticks): 100 DMG to an enemy tower within 2
-  hexes. No minions needed.
+- **Map · Bombard** (every 5 ticks): 100 DMG to the nearest enemy structure
+  within 2 hexes. No minions needed.
 - **Fight · Grapeshot** (every 2nd turn): 80% DMG to every enemy.
 - **Ultimate · Relic Shell** (Card, 4): *Relic Shell* costs 4, initiative 9:
-  after all engagements, 600 DMG to any enemy tower or hero within 4 hexes.
+  600 DMG to any enemy structure or hero within 4 hexes.
 
 | Card | Cost | Init | Keywords | Effect |
 |---|---|---|---|---|
-| Fuse | 3 | 7 | Engage (3, 30) | She fights from range: only Grapeshot, no basic attacks, and can only be hit by enemies with Engage reach 2+. |
+| Fuse | 2 | 7 | — | Next map phase she kills one more minion per tick. |
 | Tamp Powder | 1 | 2 | — | Bombard fires every 2 ticks next map phase. |
-| Brace | 2 | 3 | Tactic | +40 RES and +4 SPD in her engagements this phase. |
+| Brace | 1 | 3 | Tactic | +40 RES and +4 SPD in her next engagement. |
 
 ## Staples
 
-Neutral cards every deck carries two of. Each names any allied hero as its
-source.
+Neutral cards every deck carries one of. They name no hero: the player
+picks which allied hero plays each one.
 
 | Card | Cost | Init | Keywords | Effect |
 |---|---|---|---|---|
 | Skirmish | 3 | 5 | Engage (1, 50) | The plain engage. |
 | Reinforce | 2 | 6 | Join (2) | — |
 | Fall Back | 1 | 2 | — | Engage cards with a later initiative cannot target that hero this phase. |
-| Press the Attack | 1 | 4 | Tactic | Allies in that engagement deal +20% DMG for the first 15 ticks. |
-| Second Wind | 2 | 8 | — | After all engagements, heal that hero 25%. |
+| Press the Attack | 1 | 4 | Tactic | Allies in that hero's next engagement deal +20% DMG for the first 15 ticks. |
+| Second Wind | 2 | 8 | — | Heal that hero 25%. |
 | Hold the Line | 2 | 3 | — | An allied tower takes half damage until the next fight phase. |
 
 ## Open questions
 
-1. **Initiative direction.** Ascending (0 first) reads like a queue; is that
-   how you picture it?
-2. **Cards per hero.** 3 unique ×2 copies, or fewer copies so staples and the
-   later drafted deck matter more?
-3. **Map-phase engagements.** The Mantis's Pilgrimage breaks the "fights only
+1. **Map-phase engagements.** The Mantis's Pilgrimage breaks the "fights only
    happen in the fight phase" rule. Too much, or exactly the kind of exception
    ultimates are for?
-4. **Hand interaction.** Ephemeris and Lacuna let you see or cancel the
-   opponent's cards. Fun reads, or too much against the blind,
-   simultaneous commit?
-5. **Theme.** Keep the "ball at the end of the world" thread, or should each
-   role or faction have its own visual family?
+2. **Seeing the rival's hand.** Orrery's Ephemeris reveals cards the opponent
+   draws. Fun read, or too much against the blind, simultaneous commit?
+3. **Tactic timing.** Now that a Tactic waits for its hero's next engagement,
+   a Tactic only helps fights at its own initiative or later. A few cards sit
+   after the engages they were meant to support (Hot Wax at 6 after Snuff at
+   4, Bone Needle at 6 after nothing of hers before Kill Line at 8). Retune
+   their initiatives, or leave the sequencing puzzle to the player?

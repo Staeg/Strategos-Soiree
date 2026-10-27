@@ -76,33 +76,45 @@ then free minions march, then camps refill, waves spawn, cards are drawn.
 2. **Reveal**: plays resolve by initiative, 0 first. Plays sharing an
    initiative are checked and aimed against the state before any of them,
    then applied together.
-3. **Clash**: all engagements run side by side in fight ticks; a step jumps to
-   the next tick where someone acts. Heroes acting on the same tick go in a
-   random order.
+3. **Clash**: the engagements an initiative started fight to the end before
+   the next initiative resolves, so a hero can fight twice in one phase. They
+   run side by side in fight ticks; a step jumps to the next tick where
+   someone acts, and heroes acting on the same tick go in a random order.
+   **(open question)** `INTERLEAVE` in `content.ts` switches back to "every
+   card first, then all fights".
 
-Card rules follow the hero brainstorm's conventions:
+Card rules:
 
 - **Engage (R, L)**: the source hero starts a fight with a visible enemy hero
   within R cells (an aggressive target counts 1 closer). Every hero on either
   cell is pulled in. L is the base length; **(gap fill)** each aggressive
-  hero in the fight adds 5 ticks. Overlapping fights merge.
-- **Join (R)**: the source enters an allied fight within R (aggressive heroes
-  have 1 less reach). The fight must exist at an earlier initiative.
-- **Tactic**: changes the fight its hero is in.
+  hero in the fight adds 5 ticks. Engages at the same initiative that share
+  a hero become one engagement whose length is all of theirs added up.
+- **Next engagement**: Join and Tactic cards, and any card that changes a
+  fight, wait on their hero and land when its next engagement this phase
+  starts, whoever started it. An engagement starting at the same initiative
+  counts.
+- **Join (R)**: the source enters its next allied engagement within R
+  (aggressive heroes have 1 less reach).
+- Cards that used to act "after all engagements" (Second Wind, Second Glass,
+  Rewind) act at their own initiative.
 - **Bound**: hero cards fizzle if their hero is dead or at base.
-- Shields last to the end of the fight phase. A hero acts every
-  ceil(100 / SPD) fight ticks; its fight ability fires every Nth turn, other
-  turns are basic attacks on its focus or a random enemy.
+- Shields last to the end of the fight phase; every other fight bonus lasts
+  one engagement. A hero acts every ceil(100 / SPD) fight ticks; its fight
+  ability fires every Nth turn, other turns are basic attacks on its focus or
+  a random enemy.
 - **Ultimates** (cooldowns in fight phases): Command (aimed on the map any
   time in the map phase), Card (a unique card joins the hand at the next draw
-  when ready), Trigger (fires in a fight when its condition holds), Ascension
-  (one-time, at an XP threshold).
+  when ready), Trigger (fires the moment its condition holds), Ascension
+  (one-time, at a charge threshold).
 
-Deck: each hero's 3 cards ×2 plus 2 of each staple (Skirmish, Reinforce, Fall
-Back, Press the Attack, Second Wind, Hold the Line): 42 cards.
+Deck: one copy of each hero's 3 cards plus one of each staple (Skirmish,
+Reinforce, Fall Back, Press the Attack, Second Wind, Hold the Line): 21
+cards. The discard pile is shuffled back in when the draw pile runs out.
+Staples are played from whichever allied hero the player picks.
 
-## Placeholder content
+## Heroes
 
-Five test heroes, one per role, named "Test Top" and so on, with stats,
-abilities and cards that exercise every effect category. They borrow the old
-pixel costumes. The real roster replaces them once it is agreed.
+The first ten are in: two per role, and the seed decides which side gets
+which. Their abilities and cards are in `docs/heroes-draft.md` and, as data,
+in `packages/sim/src/content.ts`.

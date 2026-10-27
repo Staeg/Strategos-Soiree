@@ -1,5 +1,5 @@
 import { distance } from './board.ts';
-import { CARDS_KEPT, CARD_OWNER, FIGHT_EVERY, ROLE_LANE, cardDef, type CardId } from './content.ts';
+import { CARDS_KEPT, CARD_OWNER, FIGHT_EVERY, cardDef, type CardId } from './content.ts';
 import { alive, atBase, maxHp, stats } from './hero.ts';
 import { randInt, seedRng, type RngState } from './rng.ts';
 import type { Command, Hero, Play, Side, Target } from './types.ts';
@@ -87,6 +87,11 @@ class Novice implements Agent {
         const st = v.structures.find((x) => x.side === side && x.hp > 0 && x.kind !== 'core');
         return st ? { target: { kind: 'cell', cell: st.cell }, value: 1 } : null;
       }
+      case 'siege': {
+        if (enemies.length) return { target: { kind: 'hero', uid: enemies[randInt(this.rng, enemies.length)]!.uid }, value: 1 };
+        const st = v.structures.find((x) => x.side !== side && x.hp > 0 && v.visible[x.cell]);
+        return st ? { target: { kind: 'cell', cell: st.cell }, value: 1 } : null;
+      }
       case 'none': return { target: NONE, value: 1 };
     }
   }
@@ -127,7 +132,7 @@ class Tactician extends Novice {
       const tired = mine.find((h) => h.stance === 'aggressive' && ratio(h) < 0.5);
       if (tired) return [{ type: 'stance', side, uid: tired.uid }];
       if (phaseTick === 5) {
-        const fresh = mine.find((h) => h.stance === 'passive' && ROLE_LANE[h.role] >= 0 && ratio(h) > 0.8);
+        const fresh = mine.find((h) => h.stance === 'passive' && ratio(h) > 0.8);
         if (fresh) return [{ type: 'stance', side, uid: fresh.uid }];
       }
     }
@@ -161,45 +166,75 @@ class Tactician extends Novice {
     let best: { target: Target; value: number } | null = null;
     const offer = (target: Target, value: number) => { if (!best || value > best.value) best = { target, value }; };
 
+    /** Fights this source will be in at or after the card's initiative, so waiting effects land. */
+    const ahead = plans.some((p) => p.members.has(source.uid) && p.initiative >= def.initiative);
+    const near = (r: number) => enemies.filter((e) => distance(source.cell, e.cell) <= r);
     for (const op of def.effect) {
       switch (op.op) {
         case 'engage':
           for (const e of enemies) {
             if (plans.some((p) => p.cell === e.cell)) continue;
+            if (op.below !== undefined && e.hp * 100 >= maxHp(e) * op.below) continue;
             if (distance(source.cell, e.cell) - (e.stance === 'aggressive' ? 1 : 0) > op.reach) continue;
-            const [ours, theirs] = this.pulled(v, source, e);
+            const [ours, theirs] = op.duel ? [[source], [e]] : this.pulled(v, source, e);
             const edge = strength(ours) / Math.max(1, strength(theirs));
             if (edge > 1.3) offer({ kind: 'hero', uid: e.uid }, 4 + Math.min(4, edge) + (1 - ratio(e)) * 3);
           }
           break;
         case 'join':
           for (const p of plans) {
-            if (!p.members.has(source.uid) && p.initiative < def.initiative && distance(source.cell, p.cell) <= op.reach - (source.stance === 'aggressive' ? 1 : 0)) offer(NONE, 5);
+            if (!p.members.has(source.uid) && p.initiative >= def.initiative && distance(source.cell, p.cell) <= op.reach - (source.stance === 'aggressive' ? 1 : 0)) offer(NONE, 5);
           }
           break;
-        case 'empower':
-          if (op.who === 'source' ? inFight : plans.some((p) => p.members.has(source.uid) && p.initiative < def.initiative)) offer(NONE, 3);
+        case 'empower': case 'quick': case 'firstHit': case 'opening': case 'procession':
+          if (ahead) offer(NONE, 3);
           break;
+        case 'fade':
+          if (ahead && ratio(source) < 0.6) offer(NONE, 3);
+          break;
+        case 'focus': case 'slow': case 'expose': {
+          const plan = plans.find((p) => p.members.has(source.uid) && p.initiative >= def.initiative);
+          if (!plan) break;
+          if (def.aim === 'none') { offer(NONE, 3); break; }
+          for (const e of enemies) if (distance(e.cell, plan.cell) <= 1) offer({ kind: 'hero', uid: e.uid }, 3 + (1 - ratio(e)));
+          break;
+        }
         case 'shield':
           for (const p of plans) for (const uid of p.members) offer({ kind: 'hero', uid }, 3 + (1 - ratio(v.heroes[uid]!)) * 2);
           break;
-        case 'strike':
-          for (const e of enemies) {
-            if (distance(source.cell, e.cell) <= op.reach) offer({ kind: 'hero', uid: e.uid }, e.hp <= op.amount ? 7 : 2);
+        case 'strike': case 'shell':
+          for (const e of near(op.reach)) offer({ kind: 'hero', uid: e.uid }, e.hp <= op.amount ? 7 : 2);
+          if (op.op === 'shell') {
+            for (const st of v.structures) if (st.side !== side && st.hp > 0 && v.visible[st.cell] && distance(source.cell, st.cell) <= op.reach) offer({ kind: 'cell', cell: st.cell }, st.hp <= op.amount ? 8 : 3);
           }
           break;
         case 'evade':
-          if (ratio(source) < 0.45 && enemies.some((e) => distance(e.cell, source.cell) <= 2)) offer(NONE, 4);
+          if (op.reach === undefined) {
+            if (ratio(source) < 0.45 && near(2).length) offer(NONE, 4);
+          } else {
+            for (const a of v.heroes) {
+              if (a.side === side && alive(a) && distance(a.cell, source.cell) <= op.reach && ratio(a) < 0.45) offer({ kind: 'hero', uid: a.uid }, 4);
+            }
+          }
           break;
-        case 'afterHeal':
-          offer(NONE, inFight ? 2.5 : ratio(source) < 0.6 ? 2 : 0);
+        case 'heal':
+          offer(NONE, ratio(source) < 0.6 ? 2.5 : 0);
           break;
         case 'guardTower': {
           const st = v.structures.find((x) => x.side === side && x.hp > 0 && x.hp < x.maxHp / 2);
           if (st) offer({ kind: 'cell', cell: st.cell }, 2);
           break;
         }
-        case 'focus':
+        case 'rewind':
+          if (inFight || ratio(source) < 0.5) offer(NONE, 3);
+          break;
+        case 'unwrite':
+          for (const e of near(op.reach)) offer({ kind: 'hero', uid: e.uid }, 2);
+          break;
+        case 'charge': case 'rally': case 'clear': case 'cadence': case 'nightfall': case 'cancel': case 'squeeze':
+          offer(NONE, 2);
+          break;
+        case 'shadowStep':
           break;
       }
     }
