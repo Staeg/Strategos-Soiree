@@ -1,0 +1,17 @@
+{
+  "name": "@soiree/sim",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Deterministic, renderer-agnostic match simulation. Runs in the browser, in Node, and (later) on an authoritative server.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "arena": "tsx scripts/arena.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.0"
+  }
+}
