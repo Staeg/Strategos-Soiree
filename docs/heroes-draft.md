@@ -71,7 +71,7 @@ roster both depend on, so they are worth agreeing on early.
 | Carry | The Twinned | 900 | 60 | 15 | 20 | Two bodies, many hits |
 | Carry | Brass Reliquary | 850 | 135 | 15 | 6 | Siege artillery |
 
-Averages: HP 995, DMG 104, RES 20, SPD 11. 13 of 20 map abilities touch
+Averages: HP 995, DMG 104, RES 20, SPD 10.5. 13 of 20 map abilities touch
 minions (fuel, staggering, conversion, theft, funnelling).
 
 ---
