@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
 import { CREAM, DUSK, GOLD, INK, MAUVE, NIGHT, PLUM } from './art/palette.ts';
 
-export const W = 480;
-export const H = 270;
+export const W = 640;
+export const H = 360;
 
 export function text(scene: Phaser.Scene, x: number, y: number, value: string, tint = CREAM, scale = 1) {
   return scene.add.bitmapText(x, y, 'pixel', value.toUpperCase()).setTint(tint).setScale(scale);

@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
-import { CARD_IDS, HERO_IDS, type Side } from '@soiree/sim';
+import { HERO_IDS, type HeroId, type Side } from '@soiree/sim';
 import { FONT_CHARS, glyph } from './font.ts';
-import { BODY_CX, BODY_STEP, BODY_STRIDE, BODY_X, BODY_Y, CARD_ICONS, COSTUMES, FRAME_H, FRAME_W, type Patch } from './heroes.ts';
+import { BODY_CX, BODY_STEP, BODY_STRIDE, BODY_X, BODY_Y, CARD_ICONS, COSTUMES, FRAME_H, FRAME_W, LOOKS, type Patch } from './heroes.ts';
 import { AMBER, css, CREAM, DUSK, GOLD, INK, inks, MAUVE, PLUM, TEAM, VIOLET } from './palette.ts';
 import { paint, rect } from './pixels.ts';
 
@@ -14,7 +14,8 @@ export function forgeAll(scene: Phaser.Scene): void {
   for (const side of [0, 1] as const) {
     for (const id of HERO_IDS) forgeHero(scene, id, side);
     forgeNexus(scene, side);
-    for (const id of CARD_IDS) canvas(scene, `icon-${id}-${side}`, 8, 8, (ctx) => paint(ctx, CARD_ICONS[id]!, 0, 0, inks(side)));
+    forgeTower(scene, side);
+    for (const [kind, rows] of Object.entries(CARD_ICONS)) canvas(scene, `icon-${kind}-${side}`, 8, 8, (ctx) => paint(ctx, rows, 0, 0, inks(side)));
   }
   forgeEffects(scene);
   forgeScenery(scene);
@@ -41,9 +42,9 @@ function forgeFont(scene: Phaser.Scene): void {
   scene.cache.bitmapFont.add('pixel', data);
 }
 
-function forgeHero(scene: Phaser.Scene, id: keyof typeof COSTUMES, side: Side): void {
+function forgeHero(scene: Phaser.Scene, id: HeroId, side: Side): void {
   const key = heroKey(id, side);
-  const costume = COSTUMES[id];
+  const costume = COSTUMES[LOOKS[id]];
   const frames: [string[], Patch[]][] = [[BODY_STEP, costume.idle], [BODY_STRIDE, costume.idle], [BODY_STEP, costume.strike]];
   const tex = canvas(scene, key, FRAME_W * frames.length, FRAME_H, (ctx) => {
     const ink = inks(side);
@@ -84,6 +85,22 @@ function forgeNexus(scene: Phaser.Scene, side: Side): void {
   });
 }
 
+/** A slim lantern-topped spire: the towers that light each side's way. */
+function forgeTower(scene: Phaser.Scene, side: Side): void {
+  const team = TEAM[side];
+  canvas(scene, `tower-${side}`, 9, 16, (ctx) => {
+    rect(ctx, css(INK), 3, 0, 3, 1);
+    rect(ctx, css(INK), 2, 1, 5, 4);
+    rect(ctx, css(team.light), 3, 2, 3, 2);
+    rect(ctx, '#ffffff', 4, 2, 1, 1);
+    rect(ctx, css(INK), 3, 5, 3, 7);
+    rect(ctx, css(team.main), 4, 5, 1, 7);
+    rect(ctx, css(INK), 1, 12, 7, 4);
+    rect(ctx, css(MAUVE), 2, 12, 5, 1);
+    rect(ctx, css(DUSK), 2, 13, 5, 2);
+  });
+}
+
 function forgeEffects(scene: Phaser.Scene): void {
   // Hit spark: a four-point star that blooms and fades over four frames.
   const spark = canvas(scene, 'spark', 7 * 4, 7, (ctx) => {
@@ -120,6 +137,19 @@ function forgeEffects(scene: Phaser.Scene): void {
   canvas(scene, 'plus', 5, 5, (ctx) => { rect(ctx, '#7fc06a', 2, 0, 1, 5); rect(ctx, '#7fc06a', 0, 2, 5, 1); });
   canvas(scene, 'shadow', 10, 3, (ctx) => { rect(ctx, css(INK), 2, 0, 6, 3); rect(ctx, css(INK), 0, 1, 10, 1); });
   canvas(scene, 'pixel', 1, 1, (ctx) => rect(ctx, '#ffffff', 0, 0, 1, 1));
+  // Camp creeps: little masked wallflowers, neutral and pale.
+  canvas(scene, 'creep', 5, 6, (ctx) => {
+    rect(ctx, css(INK), 0, 0, 5, 4);
+    rect(ctx, css(CREAM), 1, 1, 3, 2);
+    rect(ctx, css(INK), 1, 1, 1, 1); rect(ctx, css(INK), 3, 1, 1, 1);
+    rect(ctx, css(DUSK), 1, 4, 3, 2);
+  });
+  // Jungle: a clipped topiary on a pot.
+  canvas(scene, 'hedge', 7, 9, (ctx) => {
+    rect(ctx, '#2f5a3a', 1, 0, 5, 1); rect(ctx, '#2f5a3a', 0, 1, 7, 4); rect(ctx, '#2f5a3a', 1, 5, 5, 1);
+    rect(ctx, '#4f8a55', 1, 1, 3, 2); rect(ctx, '#7fc06a', 2, 1, 1, 1);
+    rect(ctx, css(AMBER), 2, 6, 3, 3); rect(ctx, css(GOLD), 2, 6, 3, 1);
+  });
 }
 
 function frameStrip(tex: Phaser.Textures.CanvasTexture, count: number, w: number, h: number): void {
