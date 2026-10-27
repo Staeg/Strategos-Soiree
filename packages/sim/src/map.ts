@@ -1,9 +1,10 @@
-import { CORE, LANES, LANES_AT, laneCell, distance, stepToward } from './board.ts';
+import { CORE, LANES, LANES_AT, NEIGHBOURS, laneCell, distance, stepToward } from './board.ts';
 import {
   BASE_HEAL, CAMP_RESPAWN, CAMP_SIZE, CREEP_DMG, FIGHT_EVERY, MINION_DMG, MINION_STRIKE, ROLE_LANE, STANCES,
-  TOWER_DMG, WAVE_EVERY, WAVE_SIZE, XP_MINION, XP_TOWER, heroDef, type MapOp,
+  TOWER_DMG, WAVE_EVERY, WAVE_SIZE, XP_MINION, XP_TOWER, heroDef, type CommandOp, type MapOp,
 } from './content.ts';
 import { alive, awardXp, foe, heal, heroesOn, idiv, kill, maxHp, mitigate, stats } from './hero.ts';
+import { addCharge, aura, boon, grow, shadowCell } from './powers.ts';
 import { chance, randInt } from './rng.ts';
 import { visibility } from './vision.ts';
 import type { Hero, LaneId, MatchState, Side, Structure } from './types.ts';
@@ -33,8 +34,9 @@ export function mapTick(s: MatchState): void {
   laning(s);
   for (const h of s.heroes) {
     const ability = heroDef(h.id).map;
+    if (ability.every === 0) continue;
     if (alive(h) && s.mapTick >= h.mapReadyAt && mapOp(s, h, ability.op, h.cell)) {
-      h.mapReadyAt = s.mapTick + ability.every;
+      h.mapReadyAt = s.mapTick + (boon(s, h, 'cadence') || ability.every);
       s.events.push({ type: 'ability', uid: h.uid });
     }
   }
@@ -169,29 +171,83 @@ function noteCamps(s: MatchState, vis: readonly [boolean[], boolean[]]): void {
   }
 }
 
-/** Map abilities, and command ultimates aimed at `cell`. Returns false when there was nothing to do. */
+/** Map abilities, run from the hero's cell. Returns false when there was nothing to do. */
 export function mapOp(s: MatchState, h: Hero, op: MapOp, cell: number): boolean {
+  const enemy = foe(h.side);
   switch (op.op) {
-    case 'cull':
-      return minionsAt(s, cell, foe(h.side)) > 0 && cullMinions(s, cell, foe(h.side), op.n, true) > 0;
-    case 'smite': {
-      const camp = s.camps.find((c) => c.cell === cell && c.creeps > 0);
-      return camp !== undefined && cullCreeps(s, camp, op.n, h.side) > 0;
-    }
-    case 'muster': {
-      const lane = LANES_AT[cell]![0];
-      if (lane === undefined || cell === CORE[0] || cell === CORE[1]) return false;
-      s.minions.push({ lane, pos: LANES[lane].indexOf(cell), side: h.side, n: op.n });
-      return true;
+    case 'cull': {
+      const died = minionsAt(s, cell, enemy) > 0 ? cullMinions(s, cell, enemy, op.n, true) : 0;
+      if (op.store) addCharge(s, h, died, op.store);
+      return died > 0;
     }
     case 'siphon': {
-      if (h.hp >= maxHp(h) || minionsAt(s, cell, h.side) === 0) return false;
-      heal(s, h, op.heal * cullMinions(s, cell, h.side, op.n, false));
+      if (minionsAt(s, cell, h.side) === 0) return false;
+      if (op.who === 'self' && !op.grow && h.hp >= maxHp(h)) return false;
+      const eaten = cullMinions(s, cell, h.side, op.n, false);
+      const fed = op.who === 'self' ? [h] : s.heroes.filter((x) => x.side === h.side && alive(x) && distance(x.cell, cell) <= 1);
+      for (const x of fed) heal(s, x, op.heal * eaten);
+      for (let k = 0; k < eaten; k++) if (op.grow) grow(h, op.grow);
       return true;
     }
-    case 'reveal':
-      s.wards.push({ side: h.side, cell, radius: op.radius, until: op.ticks > 0 ? s.mapTick + op.ticks : nextFightTick(s) });
+    case 'glean': {
+      if (h.stance !== 'aggressive') return false;
+      const from = [cell, ...NEIGHBOURS[cell]!].find((c) => c >= 0 && minionsAt(s, c, enemy) > 0);
+      if (from === undefined) return false;
+      const died = cullMinions(s, from, enemy, op.n, false);
+      awardXp(s, [h], XP_MINION * died, XP_MINION * died);
+      addCharge(s, h, died, op.store);
+      return died > 0;
+    }
+    case 'convert': {
+      const from = [cell, ...NEIGHBOURS[cell]!].find((c) => c >= 0 && minionsAt(s, c, enemy) > 0);
+      if (from === undefined) return false;
+      let left = op.n;
+      for (const m of [...s.minions]) {
+        if (left === 0) break;
+        if (m.side !== enemy || laneCell(m.lane, m.pos) !== from || m.n === 0) continue;
+        const k = Math.min(left, m.n);
+        m.n -= k;
+        left -= k;
+        s.minions.push({ lane: m.lane, pos: m.pos, side: h.side, n: k });
+      }
+      const turned = op.n - left;
+      awardXp(s, [h], XP_MINION * turned, XP_MINION * turned);
+      return turned > 0;
+    }
+    case 'beam': {
+      const dir = s.mapTick % 6;
+      let at = cell;
+      for (let k = 0; k < op.dist && NEIGHBOURS[at]![dir]! >= 0; k++) at = NEIGHBOURS[at]![dir]!;
+      if (at === cell) return false;
+      s.wards.push({ side: h.side, cell: at, radius: 0, until: s.mapTick + op.ticks });
       return true;
+    }
+    case 'bombard': {
+      let best = -1;
+      s.structures.forEach((st, i) => {
+        if (st.side !== enemy || st.hp <= 0 || distance(cell, st.cell) > op.reach) return;
+        if (best < 0 || distance(cell, st.cell) < distance(cell, s.structures[best]!.cell)) best = i;
+      });
+      if (best < 0) return false;
+      damageStructure(s, best, op.amount);
+      return true;
+    }
+    case 'shadow': case 'dusk': case 'carve':
+      return false;
+  }
+}
+
+/** Command ultimates, aimed at `cell`. Returns false when there was nothing to do. */
+export function commandOp(s: MatchState, h: Hero, op: CommandOp, cell: number): boolean {
+  switch (op.op) {
+    case 'beacon': {
+      const ally = s.heroes.find((x) => x.side === h.side && x !== h && alive(x) && x.cell === cell);
+      if (!ally) return false;
+      ally.cell = h.cell;
+      ally.roam = -1;
+      ally.retreating = false;
+      return true;
+    }
   }
 }
 
@@ -232,7 +288,7 @@ function cullCreeps(s: MatchState, camp: MatchState['camps'][number], n: number,
   return died;
 }
 
-function damageStructure(s: MatchState, index: number, amount: number): void {
+export function damageStructure(s: MatchState, index: number, amount: number): void {
   const st = s.structures[index]!;
   if (st.hp <= 0) return;
   const dealt = Math.min(st.hp, s.mapTick < st.guardedUntil ? idiv(amount, 2) : amount);
@@ -281,8 +337,11 @@ function skirmish(s: MatchState): number[] {
     const enemy = foe(h.side);
     const camp = s.camps.findIndex((c) => c.cell === h.cell && c.creeps > 0);
     const si = structureAt(h.cell);
-    if (at(h.cell, enemy) > 0) kill1(h.cell, enemy, st.clear);
-    else if (camp >= 0) creepKills[camp]![h.side] += st.clear;
+    const clear = st.clear + boon(s, h, 'clear');
+    if (at(h.cell, enemy) > 0) {
+      kill1(h.cell, enemy, clear);
+      if (aura(s, h, 'carve')) addCharge(s, h, Math.min(clear, at(h.cell, enemy)));
+    } else if (camp >= 0) creepKills[camp]![h.side] += clear;
     if (si >= 0 && st.siege > 0 && s.structures[si]!.side === enemy && at(h.cell, enemy) === 0) hitStructure(si, st.siege);
   }
 
@@ -293,8 +352,9 @@ function skirmish(s: MatchState): number[] {
     const tower = si >= 0 && s.structures[si]!.side === enemy;
     const heroes = heroesOn(s, cell, enemy).length > 0;
     if (at(cell, enemy) === 0 && !tower && !heroes) return;
+    const strike = rallied(s, m.side, m.lane, cell) ? 2 * MINION_STRIKE : MINION_STRIKE;
     for (let k = 0; k < m.n; k++) {
-      if (!chance(rng, MINION_STRIKE)) continue;
+      if (!chance(rng, strike)) continue;
       if (at(cell, enemy) > 0) kill1(cell, enemy, 1);
       else if (tower) hitStructure(si, MINION_DMG);
       else {
@@ -341,6 +401,30 @@ function skirmish(s: MatchState): number[] {
   return held;
 }
 
+/** Whether an allied hero's Vintage or Lamp Season doubles these minions' strikes. */
+function rallied(s: MatchState, side: Side, lane: LaneId, cell: number): boolean {
+  return s.heroes.some((h) => h.side === side && alive(h)
+    && ((h.cell === cell && boon(s, h, 'rallyCell') > 0) || boon(s, h, 'rallyLane') === lane + 1));
+}
+
+/**
+ * Enemy minions standing in a Long Shadow each stay put with its chance.
+ * Returns how many of each stack it holds.
+ */
+function shadows(s: MatchState, held: number[]): number[] {
+  const out = s.minions.map(() => 0);
+  for (const h of s.heroes) {
+    const shadow = aura(s, h, 'shadow');
+    const cell = shadow ? shadowCell(h) : -1;
+    if (cell < 0) continue;
+    s.minions.forEach((m, i) => {
+      if (m.side === h.side || laneCell(m.lane, m.pos) !== cell) return;
+      for (let k = held[i]! + out[i]!; k < m.n; k++) if (chance(s.rng.map, shadow!.permille)) out[i]!++;
+    });
+  }
+  return out;
+}
+
 /**
  * Minions free to walk advance one cell. A minion is pinned while enemy
  * minions or an enemy structure share its cell. The sides take turns going
@@ -348,6 +432,8 @@ function skirmish(s: MatchState): number[] {
  * cell rather than passing through one another.
  */
 function march(s: MatchState, held: number[]): void {
+  const shade = shadows(s, held);
+  held = held.map((n, i) => n + shade[i]!);
   const count = s.minions.length;
   const first: Side = (s.mapTick & 1) as Side;
   for (const side of [first, foe(first)]) {

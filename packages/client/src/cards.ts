@@ -4,8 +4,10 @@ import { BLOOD, CREAM, DUSK, GOLD, INK, MAUVE, VIOLET } from './art/palette.ts';
 import { centred } from './ui.ts';
 
 const ICON: Record<CardOp['op'], string> = {
-  engage: 'engage', join: 'join', empower: 'tactic', focus: 'tactic', shield: 'guard', guardTower: 'guard',
-  evade: 'evade', strike: 'strike', afterHeal: 'heal',
+  engage: 'engage', join: 'join', shield: 'guard', guardTower: 'guard', evade: 'evade', fade: 'evade', shadowStep: 'evade',
+  strike: 'strike', shell: 'strike', heal: 'heal', rewind: 'heal', nightfall: 'reveal',
+  empower: 'tactic', focus: 'tactic', slow: 'tactic', expose: 'tactic', quick: 'tactic', firstHit: 'tactic', opening: 'tactic',
+  procession: 'tactic', charge: 'tactic', cancel: 'tactic', unwrite: 'tactic', squeeze: 'tactic', rally: 'tactic', clear: 'tactic', cadence: 'tactic',
 };
 export const iconKey = (id: CardId, side: Side) => `icon-${ICON[cardDef(id).effect[0]!.op]}-${side}`;
 

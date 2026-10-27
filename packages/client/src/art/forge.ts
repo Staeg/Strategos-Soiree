@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { HERO_IDS, type HeroId, type Side } from '@soiree/sim';
 import { FONT_CHARS, glyph } from './font.ts';
-import { BODY_CX, BODY_STEP, BODY_STRIDE, BODY_X, BODY_Y, CARD_ICONS, COSTUMES, FRAME_H, FRAME_W, LOOKS, type Patch } from './heroes.ts';
+import { BODY_CX, BODY_STEP, BODY_STRIDE, BODY_X, BODY_Y, CARD_ICONS, COSTUMES, FRAME_H, FRAME_W, type Patch } from './heroes.ts';
 import { AMBER, css, CREAM, DUSK, GOLD, INK, inks, MAUVE, PLUM, TEAM, VIOLET } from './palette.ts';
 import { paint, rect } from './pixels.ts';
 
@@ -44,7 +44,7 @@ function forgeFont(scene: Phaser.Scene): void {
 
 function forgeHero(scene: Phaser.Scene, id: HeroId, side: Side): void {
   const key = heroKey(id, side);
-  const costume = COSTUMES[LOOKS[id]];
+  const costume = COSTUMES[id];
   const frames: [string[], Patch[]][] = [[BODY_STEP, costume.idle], [BODY_STRIDE, costume.idle], [BODY_STEP, costume.strike]];
   const tex = canvas(scene, key, FRAME_W * frames.length, FRAME_H, (ctx) => {
     const ink = inks(side);

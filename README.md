@@ -3,11 +3,13 @@
 A shotcaller's MOBA: five heroes walk their lanes and camps on a hex map by
 themselves while you rewire them with a few scarce orders (stance, roam).
 Every 50 map ticks the match stops for a **fight phase**: both sides commit
-cards blind, reveal, resolve them by initiative, and any engagements play out
-in fight ticks.
+cards blind, reveal, resolve them by initiative, and each initiative's
+engagements play out in fight ticks before the next resolves.
 
-This is the rough structure with five placeholder heroes, against an AI of
-two difficulties, with placeholder pixel art drawn entirely from code. The
+This is the rough structure with the first ten heroes (two per role, split
+between the sides by the seed), against an AI of two difficulties, with
+placeholder pixel art drawn entirely from code. The roster is in
+[docs/heroes-draft.md](docs/heroes-draft.md). The
 rules as implemented, and which gaps were filled by guesswork, are in
 [docs/match-rules.md](docs/match-rules.md).
 

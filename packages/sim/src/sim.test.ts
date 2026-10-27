@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { createAgent, DIFFICULTIES } from './ai.ts';
 import { CELLS, CORE, LANES, N_CELLS, NEIGHBOURS, STRUCTURE_SITES, distance, mirror } from './board.ts';
-import { CARDS_KEPT, FIGHT_EVERY, WAVE_SIZE, XP_UNIT, buildDeck, LINEUP } from './content.ts';
-import { awardXp } from './hero.ts';
+import { CARDS_KEPT, FIGHT_EVERY, STAPLES, WAVE_SIZE, XP_UNIT, buildDeck, lineups, type CardId, type HeroId } from './content.ts';
+import { awardXp, kill, maxHp } from './hero.ts';
 import { runMatch } from './match.ts';
 import { nextU32, randInt, seedRng } from './rng.ts';
 import { advance, createMatch, hashState, step } from './sim.ts';
-import type { MatchState } from './types.ts';
+import type { Command, GameEvent, MatchState, Target } from './types.ts';
 import { viewFor, visibility } from './vision.ts';
 
 const duel = (seed: number, steps = 3000) =>
@@ -143,15 +143,20 @@ describe('fog of war', () => {
 });
 
 describe('fight phase', () => {
+  const TEAMS: [HeroId[], HeroId[]] = [
+    ['gnomon', 'vespertine', 'mothTenor', 'saintHalyard', 'scrimshander'],
+    ['tallowDuchess', 'carrionAbacus', 'lacuna', 'vintnerGhast', 'brassReliquary'],
+  ];
+
   /** Puts two heroes face to face on one cell at the start of a plan phase. */
-  function faceOff(): MatchState {
-    const s = idle(createMatch(11), (x) => x.phase === 'plan');
+  function faceOff(hands: [CardId[], CardId[]] = [['skirmish', 'fallBack'], ['skirmish', 'fallBack']]): MatchState {
+    const s = idle(createMatch(11, TEAMS), (x) => x.phase === 'plan');
     const cell = LANES[1][4]!;
-    for (const h of s.heroes) h.cell = h.side === 0 ? CORE[0] : CORE[1];
+    for (const h of s.heroes) [h.cell, h.hp] = [h.side === 0 ? CORE[0] : CORE[1], maxHp(h)];
     s.heroes[0]!.cell = cell;
     s.heroes[5]!.cell = cell;
-    s.sides[0].hand = ['skirmish', 'fallBack'];
-    s.sides[1].hand = ['skirmish', 'fallBack'];
+    s.sides[0].hand = hands[0];
+    s.sides[1].hand = hands[1];
     return s;
   }
 
@@ -190,9 +195,157 @@ describe('fight phase', () => {
       turns += s.events.filter((e) => e.type === 'act' && e.uid === 0).length;
     }
     expect(new Set(ticks).size).toBe(ticks.length);
-    // SPD 7 acts every 15 ticks: 15, 30, 45 in a 50-tick fight.
-    expect(turns).toBe(3);
+    // Gnomon's SPD 12 acts every 9 ticks: 9, 18, 27, 36, 45 in a 50-tick fight.
+    expect(turns).toBe(5);
     expect(s.phase).toBe('map');
+  });
+});
+
+describe('fight phase rules', () => {
+  const TEAMS: [HeroId[], HeroId[]] = [
+    ['gnomon', 'vespertine', 'mothTenor', 'saintHalyard', 'scrimshander'],
+    ['tallowDuchess', 'carrionAbacus', 'lacuna', 'vintnerGhast', 'brassReliquary'],
+  ];
+  const at = (s: MatchState, placed: Record<number, number>) => {
+    for (const h of s.heroes) [h.cell, h.hp] = [placed[h.uid] ?? CORE[h.side], maxHp(h)];
+  };
+  const plan = () => idle(createMatch(11, TEAMS), (x) => x.phase === 'plan');
+  const run = (s: MatchState, commands: Command[]) => {
+    advance(s, [...commands, { type: 'commit', side: 0, discard: [] }, { type: 'commit', side: 1, discard: [] }]);
+    const all: GameEvent[] = [];
+    while (s.phase !== 'map') { advance(s, []); all.push(...s.events); }
+    return all;
+  };
+  const mid = LANES[1][4]!;
+
+  it('merges same-initiative engages that share a hero, adding their lengths', () => {
+    const s = plan();
+    at(s, { 0: mid, 5: mid });
+    s.sides[0].hand = ['skirmish'];
+    s.sides[1].hand = ['skirmish'];
+    const events = run(s, [
+      { type: 'play', side: 0, handIndex: 0, source: 0, target: { kind: 'hero', uid: 5 } },
+      { type: 'play', side: 1, handIndex: 0, source: 5, target: { kind: 'hero', uid: 0 } },
+    ]);
+    const engages = events.filter((e) => e.type === 'engage');
+    expect(engages).toHaveLength(1);
+    expect(engages[0]!.type === 'engage' && engages[0]!.members).toEqual([0, 5]);
+    expect(s.engagements).toEqual([]);
+  });
+
+  it('gives a merged engagement the length of every engage in it', () => {
+    const s = plan();
+    at(s, { 0: mid, 5: mid });
+    s.sides[0].hand = ['skirmish'];
+    s.sides[1].hand = ['skirmish'];
+    advance(s, [
+      { type: 'play', side: 0, handIndex: 0, source: 0, target: { kind: 'hero', uid: 5 } },
+      { type: 'play', side: 1, handIndex: 0, source: 5, target: { kind: 'hero', uid: 0 } },
+      { type: 'commit', side: 0, discard: [] }, { type: 'commit', side: 1, discard: [] },
+    ]);
+    advance(s, []);
+    expect(s.phase).toBe('clash');
+    expect(s.engagements.map((e) => e.length)).toEqual([100]);
+  });
+
+  it('fights each initiative out before the next resolves', () => {
+    const s = plan();
+    at(s, { 0: mid, 5: mid });
+    s.sides[0].hand = ['skirmish', 'killLine'];
+    const phases: string[] = [];
+    advance(s, [
+      { type: 'play', side: 0, handIndex: 0, source: 0, target: { kind: 'hero', uid: 5 } },
+      { type: 'play', side: 0, handIndex: 0, source: 4, target: { kind: 'hero', uid: 5 } },
+      { type: 'commit', side: 0, discard: [] }, { type: 'commit', side: 1, discard: [] },
+    ]);
+    s.heroes[4]!.cell = mid;
+    while (s.phase !== 'map') { advance(s, []); for (const e of s.events) if (e.type === 'phase') phases.push(e.phase); }
+    expect(phases).toEqual(['clash', 'resolve', 'clash', 'map']);
+  });
+
+  it("holds a Tactic for the hero's next engagement, even one it did not start", () => {
+    const s = plan();
+    at(s, { 4: mid, 5: mid });
+    s.sides[0].hand = ['pressTheAttack'];
+    s.sides[1].hand = ['snuff'];
+    advance(s, [
+      { type: 'play', side: 0, handIndex: 0, source: 4, target: { kind: 'none' } },
+      { type: 'play', side: 1, handIndex: 0, source: 5, target: { kind: 'hero', uid: 4 } },
+      { type: 'commit', side: 0, discard: [] }, { type: 'commit', side: 1, discard: [] },
+    ]);
+    advance(s, []);
+    expect(s.phase).toBe('clash');
+    expect(s.heroes[4]!.fx.surgePct).toBe(20);
+    expect(s.heroes[4]!.fx.armed).toEqual([]);
+  });
+
+  it('heals with Second Wind at its own initiative, not after the fights', () => {
+    const s = plan();
+    at(s, {});
+    s.heroes[3]!.hp = 100;
+    s.sides[0].hand = ['secondWind'];
+    advance(s, [{ type: 'play', side: 0, handIndex: 0, source: 3, target: { kind: 'none' } }, ...[0, 1].map((side) => ({ type: 'commit' as const, side: side as 0 | 1, discard: [] }))]);
+    advance(s, []);
+    expect(s.heroes[3]!.hp).toBeGreaterThan(100);
+  });
+
+  it("cancels the opponent's costliest later card with Lacuna", () => {
+    const s = plan();
+    at(s, { 0: mid, 7: mid });
+    s.sides[0].hand = ['skirmish'];
+    s.sides[1].hand = ['lacuna'];
+    const events = run(s, [
+      { type: 'play', side: 0, handIndex: 0, source: 0, target: { kind: 'hero', uid: 7 } },
+      { type: 'play', side: 1, handIndex: 0, source: 7, target: { kind: 'none' } },
+    ]);
+    const fizzles = events.flatMap((e) => (e.type === 'card' ? [e.fizzle] : []));
+    expect(fizzles).toEqual([null, 'cancelled']);
+    expect(events.some((e) => e.type === 'engage')).toBe(false);
+  });
+
+  it('keeps Vespertine hidden unless she shares a cell with an enemy hero or structure', () => {
+    const s = createMatch(11, TEAMS);
+    const vesp = s.heroes[1]!;
+    vesp.cell = LANES[1][4]!;
+    expect(visibility(s, 1)[vesp.cell]).toBe(true);
+    expect(viewFor(s, 1).heroes[1]!.cell).toBe(-1);
+    s.heroes[7]!.cell = vesp.cell;
+    expect(viewFor(s, 1).heroes[1]!.cell).toBe(vesp.cell);
+  });
+
+  it("saves a dying ally with Vintner Ghast's Toast", () => {
+    const s = plan();
+    at(s, { 0: mid, 5: mid, 8: mid });
+    s.heroes[5]!.hp = 1;
+    s.heroes[8]!.ultReadyAt = 0;
+    s.sides[0].hand = ['skirmish'];
+    const events = run(s, [{ type: 'play', side: 0, handIndex: 0, source: 0, target: { kind: 'hero', uid: 5 } }]);
+    expect(events.some((e) => e.type === 'act' && e.uid === 8 && e.kind === 'ult')).toBe(true);
+  });
+
+  it("keeps the Tallow Duchess standing through Last Light, then sends her home", () => {
+    const s = plan();
+    at(s, { 0: mid, 5: mid });
+    s.heroes[5]!.hp = 100;
+    s.heroes[5]!.ultReadyAt = 0;
+    s.sides[0].hand = ['skirmish'];
+    const events = run(s, [{ type: 'play', side: 0, handIndex: 0, source: 0, target: { kind: 'hero', uid: 5 } }]);
+    expect(events.some((e) => e.type === 'act' && e.uid === 5 && e.kind === 'ult')).toBe(true);
+    expect(events.some((e) => e.type === 'death' && e.uid === 5)).toBe(false);
+    expect(s.heroes[5]!.cell).toBe(CORE[1]);
+  });
+
+  it('brings Gnomon back from death with Rewind', () => {
+    const s = plan();
+    at(s, {});
+    s.heroes[0]!.origin = { hp: 600, cell: mid, respawnAt: -1 };
+    kill(s, s.heroes[0]!, []);
+    s.heroes[0]!.ultReadyAt = 0;
+    s.sides[0].hand = ['rewind'];
+    run(s, [{ type: 'play', side: 0, handIndex: 0, source: 0, target: { kind: 'none' } }]);
+    expect(s.heroes[0]!.respawnAt).toBe(-1);
+    expect(s.heroes[0]!.cell).toBe(mid);
+    expect(s.heroes[0]!.hp).toBe(600);
   });
 });
 
@@ -224,7 +377,16 @@ describe('simulation', () => {
     }
   });
 
-  it('builds the deck from staples and hero cards, two of each', () => {
-    expect(buildDeck(LINEUP)).toHaveLength(42);
+  it('builds the deck from one of each staple and hero card', () => {
+    const deck = buildDeck(lineups(3)[0]);
+    expect(deck).toHaveLength(STAPLES.length + 15);
+    expect(new Set(deck).size).toBe(deck.length);
+  });
+
+  it('splits each role between the sides by seed', () => {
+    for (const seed of [0, 1, 31]) {
+      const [a, b] = lineups(seed);
+      expect(new Set([...a, ...b]).size).toBe(10);
+    }
   });
 });

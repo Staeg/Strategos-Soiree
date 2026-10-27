@@ -42,52 +42,72 @@ export interface Costume {
   strike: Patch[];
 }
 
-/** Costumes by look. Placeholder heroes borrow these until the roster has its own. */
-export const COSTUMES = {
-  knight: {
-    wear: [{ x: 5, y: 2, rows: ['.MMMM.', 'MmmmmM', 'Mm..mM'] }],
-    idle: [{ x: 12, y: 3, rows: ['.h.', '.m.', '.m.', '.m.', '.m.', 'ggg', '.w.'] }],
-    strike: [{ x: 11, y: 8, rows: ['g......', 'gwmmmmh', 'g......'] }],
+/**
+ * One costume per hero, each built around a single signature colour so the
+ * cast stays readable at map scale. The team livery (t d l) always shows
+ * somewhere on the body.
+ */
+export const COSTUMES: Record<HeroId, Costume> = {
+  // A candle in a wax gown, flame for a head.
+  tallowDuchess: {
+    wear: [{ x: 6, y: 0, rows: ['.g..', 'gag.', '.a..'] }, { x: 5, y: 13, rows: ['cccccc', 'c.cc.c'] }],
+    idle: [{ x: 12, y: 6, rows: ['.g.', '.a.', '.c.', '.c.', 'ccc'] }],
+    strike: [{ x: 11, y: 6, rows: ['...gg', '.agga', 'aagga', '.agg.'] }],
   },
-  brute: {
-    wear: [{ x: 4, y: 1, rows: ['c......c', 'cc....cc'] }],
-    idle: [{ x: 12, y: 2, rows: ['.ww.', 'wwww', 'wkww', '.ww.', '.w..', '.w..', '.w..', '.w..'] }],
-    strike: [{ x: 11, y: 7, rows: ['.....ww.', 'wwwwwwww', '.....wkw', '......w.'] }],
+  // A sundial plate on his back, its blade over one shoulder.
+  gnomon: {
+    wear: [{ x: 1, y: 6, rows: ['.MM.', 'MmgM', 'MmmM', '.MM.'] }, { x: 2, y: 3, rows: ['g..', '.g.', '..g'] }],
+    idle: [{ x: 12, y: 3, rows: ['.h.', '.m.', '.m.', '.m.', '.m.', 'MMM', '.w.'] }],
+    strike: [{ x: 11, y: 9, rows: ['Mmmmmmmh'] }],
   },
-  archer: {
-    wear: [{ x: 5, y: 2, rows: ['.LLLL.', 'LLLLLL', 'L....L', 'L.....'] }],
-    idle: [{ x: 12, y: 5, rows: ['.w', 'wc', 'wc', 'wc', 'wc', '.w'] }],
-    strike: [{ x: 11, y: 5, rows: ['...w...', '..wc...', '.w.c...', 'mmmmmmh', '.w.c...', '..wc...', '...w...'] }],
+  // A hole in the world full of stars, a crescent mask for a face.
+  vespertine: {
+    wear: [{ x: 6, y: 4, rows: ['nnnn', 'nnhh', 'nnnh'] }, { x: 5, y: 8, rows: ['.nnnn.', 'nnhnnn', 'nnnnhn', '.nhnn.'] }],
+    idle: [{ x: 12, y: 9, rows: ['h', 'm'] }],
+    strike: [{ x: 12, y: 9, rows: ['mmh'] }],
   },
-  mage: {
-    wear: [{ x: 5, y: 0, rows: ['...p..', '..pp..', '.pPpp.', 'pppppp'] }],
-    idle: [{ x: 12, y: 2, rows: ['.p.', 'php', '.p.', '.w.', '.w.', '.w.', '.w.', '.w.', '.w.', '.w.'] }],
-    strike: [{ x: 12, y: 1, rows: ['hph.', 'phph', 'hph.', '.w..', '.w..', '.w..', '.w..', '.w..', '.w..', '.w..'] }],
+  // Black ruff, hooked beak, an abacus of red beads on his back.
+  carrionAbacus: {
+    wear: [{ x: 5, y: 7, rows: ['xxxxxx'] }, { x: 10, y: 5, rows: ['gg', '.a'] }, { x: 0, y: 5, rows: ['wwww', 'wrhw', 'wrrw', 'whrw', 'wwww'] }],
+    idle: [{ x: 12, y: 10, rows: ['x.', 'xx'] }],
+    strike: [{ x: 12, y: 8, rows: ['xxx.', '..xx', 'xxx.'] }],
   },
-  rogue: {
-    wear: [{ x: 5, y: 2, rows: ['.DDDD.', 'DDDDDD', '......', 'DDD.DD'] }],
-    idle: [{ x: 12, y: 8, rows: ['h', 'm', 'w'] }],
-    strike: [{ x: 12, y: 9, rows: ['wmmh'] }],
+  // Dusty wings and antennae, a lantern held out.
+  mothTenor: {
+    wear: [{ x: 5, y: 0, rows: ['y....y', '.y..y.', '..yy..'] }, { x: 0, y: 6, rows: ['..yyy', '.yyay', 'yyyyy', '.yyy.', '..y..'] }, { x: 8, y: 5, rows: ['a.a'] }],
+    idle: [{ x: 12, y: 6, rows: ['.w.', 'ggg', 'gag', 'ggg'] }],
+    strike: [{ x: 12, y: 2, rows: ['.g.', 'gag', 'ggg', '.w.', '.w.'] }],
   },
-  cleric: {
-    wear: [{ x: 5, y: 0, rows: ['.gggg.', 'g....g', '.gggg.'] }],
-    idle: [{ x: 12, y: 2, rows: ['.g.', 'ggg', '.g.', '.w.', '.w.', '.w.', '.w.', '.w.', '.w.', '.w.'] }],
-    strike: [{ x: 12, y: 1, rows: ['hgh', 'ggg', 'hgh', '.w.', '.w.', '.w.', '.w.', '.w.', '.w.', '.w.', '.w.'] }],
+  // White gloves and a collar around nothing.
+  lacuna: {
+    wear: [{ x: 6, y: 4, rows: ['xxxx', 'xxxx', 'xxxx'] }, { x: 5, y: 7, rows: ['hhhhhh'] }],
+    idle: [{ x: 12, y: 8, rows: ['hh', 'hh'] }],
+    strike: [{ x: 12, y: 7, rows: ['..hh', 'hhhh', '..hh'] }],
   },
-  lancer: {
-    wear: [{ x: 5, y: 0, rows: ['..rr..', '.rr...', 'MmmmmM', 'M....M'] }],
-    idle: [{ x: 13, y: 0, rows: ['h', 'm', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w'] }],
-    strike: [{ x: 10, y: 9, rows: ['wwwwwwwmh'] }],
+  // A lighthouse lantern for a head.
+  saintHalyard: {
+    wear: [{ x: 5, y: 2, rows: ['.MMMM.', 'MggggM', 'MgaagM', 'MggggM', '.MMMM.'] }],
+    idle: [{ x: 12, y: 2, rows: ['g', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w'] }],
+    strike: [{ x: 11, y: 3, rows: ['.gggg', 'gcccc', '.gggg'] }],
   },
-  warden: {
-    wear: [{ x: 5, y: 2, rows: ['.MMMM.', 'MMMMMM'] }],
-    idle: [{ x: 10, y: 7, rows: ['.MM.', 'MmmM', 'MgmM', 'MmmM', 'MmmM', '.MM.'] }],
-    strike: [{ x: 12, y: 6, rows: ['.MM.', 'MmmM', 'MgmM', 'MmgM', 'MmmM', 'MmmM', '.MM.'] }],
+  // A wine-red phantom in a tailcoat, carafe in hand.
+  vintnerGhast: {
+    wear: [{ x: 6, y: 4, rows: ['qqqq', 'qqoq', 'qqqq'] }, { x: 5, y: 13, rows: ['.qqqq.', '..qq..'] }, { x: 4, y: 11, rows: ['R', 'R'] }],
+    idle: [{ x: 12, y: 6, rows: ['.c.', '.c.', 'cRc', 'RRR', '.R.'] }],
+    strike: [{ x: 12, y: 5, rows: ['RRc.', 'RRRc', '...R', '...R'] }],
   },
-} satisfies Record<string, Costume>;
-
-export const LOOKS: Record<HeroId, keyof typeof COSTUMES> = {
-  stubTop: 'warden', stubJungle: 'rogue', stubMid: 'mage', stubSupport: 'cleric', stubCarry: 'archer',
+  // An oilskin hood and a carved tusk harpoon.
+  scrimshander: {
+    wear: [{ x: 5, y: 2, rows: ['.eeee.', 'eeeeee', 'e....e'] }],
+    idle: [{ x: 13, y: 0, rows: ['h', 'y', 'y', 'y', 'y', 'y', 'y', 'y', 'y', 'y', 'y', 'y', 'y'] }],
+    strike: [{ x: 10, y: 9, rows: ['yyyyyyyyyh'] }],
+  },
+  // A little saint riding a bronze mortar on cart wheels.
+  brassReliquary: {
+    wear: [{ x: 5, y: 0, rows: ['.gggg.', 'g....g'] }, { x: 3, y: 11, rows: ['bbbbbbbbb', 'bbbbbbbbb', '.MM...MM.', '.MM...MM.'] }],
+    idle: [{ x: 11, y: 9, rows: ['bbbb', 'bbbb'] }],
+    strike: [{ x: 11, y: 8, rows: ['.....a', 'bbbbaa', 'bbbb.a'] }],
+  },
 };
 
 /** Tiny 8x8 card emblems, one per kind of card. */

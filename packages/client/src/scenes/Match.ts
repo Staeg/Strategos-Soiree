@@ -188,6 +188,11 @@ export class Match extends Phaser.Scene {
       } else if (def.aim === 'tower') {
         const st = this.v.structures.find((x) => x.cell === cell && x.side === this.me && x.hp > 0);
         if (st) this.play(mode.handIndex, mode.source, { kind: 'cell', cell });
+      } else if (def.aim === 'siege') {
+        const t = near.find((h) => h.side !== this.me);
+        const st = this.v.structures.find((x) => x.cell === cell && x.side !== this.me && x.hp > 0);
+        if (t) this.play(mode.handIndex, mode.source, { kind: 'hero', uid: t.uid });
+        else if (st) this.play(mode.handIndex, mode.source, { kind: 'cell', cell });
       }
       return;
     }
@@ -350,6 +355,15 @@ export class Match extends Phaser.Scene {
         }
         return;
       }
+      case 'squad': {
+        const fight = v.engagements.find((x) => x.id === e.id);
+        if (!fight) return;
+        for (const hit of e.hits) {
+          const p = (hit.uid >= 0 && at(hit.uid)) || { x: cellX(fight.cell), y: cellY(fight.cell) };
+          if (hit.amount > 0) this.float(p.x, p.y - 20, String(hit.amount), TEAM[e.side].light);
+        }
+        return;
+      }
       case 'hurt': {
         const p = at(e.uid);
         if (p && e.by === 'card') this.float(p.x, p.y - 20, String(e.amount), GOLD);
@@ -379,7 +393,7 @@ export class Match extends Phaser.Scene {
         return;
       case 'phase':
         if (e.phase === 'plan') this.banner('Fight phase');
-        if (e.phase === 'resolve') this.banner('Reveal');
+        if (e.phase === 'resolve' && v.initiative < 0) this.banner('Reveal');
         if (e.phase === 'map') { this.log = []; this.discard.clear(); }
         if (e.phase === 'over') this.finale();
         this.panelKey = '';
@@ -469,7 +483,7 @@ export class Match extends Phaser.Scene {
       bg.fillStyle(h.uid === this.selected ? DUSK : PLUM, 0.8).fillRect(PANEL_X, y - 4, 316, 20);
       add(this.add.sprite(PANEL_X + 10, y + 14, heroKey(h.id, h.side), '0').setOrigin(heroOriginX(h.side), 1));
       add(text(this, PANEL_X + 24, y - 1, def.name, GOLD));
-      add(text(this, PANEL_X + 24, y + 7, `${h.role}  ${Math.floor(h.xp / XP_UNIT)} xp`, MAUVE));
+      add(text(this, PANEL_X + 24, y + 7, `${h.role}  ${Math.floor(h.xp / XP_UNIT)} xp${h.charge > 0 && def.ult.kind !== 'ascension' ? `  ${h.charge}*` : ''}`, MAUVE));
       const max = maxHp(h);
       bg.fillStyle(INK).fillRect(PANEL_X + 110, y, 82, 5);
       bg.fillStyle(h.respawnAt >= 0 ? DUSK : TEAM[h.side].main).fillRect(PANEL_X + 111, y + 1, Math.ceil((80 * Math.max(0, h.hp)) / max), 3);
@@ -479,7 +493,7 @@ export class Match extends Phaser.Scene {
       add(text(this, PANEL_X + 200, y + 7, status, MAUVE));
       const ult = def.ult;
       const ready = ult.kind === 'ascension' ? h.ascended : v.fightPhase >= h.ultReadyAt;
-      const label = ult.kind === 'ascension' ? (h.ascended ? 'ascended' : `asc ${ult.xp}xp`) : ready ? 'ult ready' : `ult in ${h.ultReadyAt - v.fightPhase}`;
+      const label = ult.kind === 'ascension' ? (h.ascended ? 'ascended' : `asc ${h.charge}/${ult.charge}`) : ready ? 'ult ready' : `ult in ${h.ultReadyAt - v.fightPhase}`;
       add(text(this, PANEL_X + 258, y - 1, label, ready ? VIOLET : DUSK));
     });
   }
@@ -536,7 +550,7 @@ export class Match extends Phaser.Scene {
 
     // The timeline: own plays above the line, the rival's below, initiative 0 to 9.
     const tx = PANEL_X + 10, ty = top + 8;
-    const current = v.phase === 'resolve' ? (v.pending[0] ?? 10) : v.phase === 'clash' ? 10 : -1;
+    const current = v.phase === 'resolve' ? (v.pending[0] ?? 10) : v.phase === 'clash' ? v.initiative : -1;
     for (let i = 0; i < 10; i++) {
       const x = tx + i * 30;
       g.fillStyle(i < current ? DUSK : PLUM).fillRect(x, ty, 28, 34);
