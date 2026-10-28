@@ -59,10 +59,12 @@ hero palettes under "Placeholder art" in
 visually distinct as possible.
 
 **The match screen** puts your heroes down the left and the rival's down the
-right (hover a bar to slide it out; rivals out of sight are greyed and show
-only what was last seen), the board in the middle, the hand along the bottom
-in every phase, and mana and the initiative timeline bottom right. Hold
-**Ctrl** over a card or a hero bar for its full rules. Hotkeys hide behind
+right as their figures (hover a bar to slide it out with the name and the
+rest; rivals out of sight are greyed and show only what was last seen), the board in the middle, the hand along the bottom
+in every phase, and mana and the initiative timeline bottom right. HP, DMG, RES and SPD
+are drawn as a heart, sword, shield and boot everywhere. A hero's own cards
+carry its face, and hovering one calls the hero out on the board and in its
+bar. Hold **Ctrl** over a card or a hero bar for its full rules. Hotkeys hide behind
 the **?** in the bottom-left corner, next to a debug **log** of every event.
 
 ## Deploying
