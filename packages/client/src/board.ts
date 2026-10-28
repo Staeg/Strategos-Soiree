@@ -37,9 +37,9 @@ const RIVER = 0x2a3550;
 /**
  * The ballroom floor at the end of the world: lanes are carpet runners,
  * the jungle is a clipped garden in each side's tint, the river a strip of
- * dark mirror between them.
+ * dark mirror between them. Camps stand in place of a topiary.
  */
-export function drawBoard(scene: Phaser.Scene): void {
+export function drawBoard(scene: Phaser.Scene, camps: readonly number[]): void {
   const g = scene.add.graphics().setDepth(0);
   for (let c = 0; c < N_CELLS; c++) {
     const side = territory(c);
@@ -55,7 +55,7 @@ export function drawBoard(scene: Phaser.Scene): void {
     }
   }
   for (const c of JUNGLE) {
-    if (territory(c) === null) continue;
+    if (territory(c) === null || camps.includes(c)) continue;
     scene.add.image(cellX(c) + (c % 2 ? 5 : -5), cellY(c) - 3, 'hedge').setDepth(1).setAlpha(0.8);
   }
   // Corner plinths under each core, in livery.

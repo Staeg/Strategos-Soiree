@@ -11,7 +11,8 @@
     "preview": "npm run preview -w @soiree/client",
     "test": "vitest run",
     "typecheck": "npm run typecheck --workspaces",
-    "arena": "npm run arena -w @soiree/sim --"
+    "arena": "npm run arena -w @soiree/sim --",
+    "jungle": "npm run jungle -w @soiree/sim --"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

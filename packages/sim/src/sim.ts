@@ -1,15 +1,15 @@
-import { CAMP_SITES, CORE, N_CELLS, STRUCTURE_SITES, distance } from './board.ts';
+import { CORE, JUNGLE_HALVES, N_CELLS, STRUCTURE_SITES, distance, opposite } from './board.ts';
 import { resolveNext } from './cards.ts';
 import {
-  CAMP_SIZE, CARDS_KEPT, CARD_OWNER, DRAW_EVERY, FIGHT_EVERY, INTERLEAVE, MANA_KEPT, MANA_PER_PHASE, MAX_MAP_TICKS,
-  ORDERS_PER_PHASE, STRUCTURE_HP, buildDeck, cardDef, heroDef, lineups, type HeroId,
+  CAMP_IDS, CARDS_KEPT, CARD_OWNER, DRAW_EVERY, FIGHT_EVERY, INTERLEAVE, MANA_KEPT, MANA_PER_PHASE, MAX_MAP_TICKS,
+  ORDERS_PER_PHASE, STRUCTURE_HP, buildDeck, campDef, cardDef, heroDef, lineups, type HeroId,
 } from './content.ts';
 import { clashStep, freshFx, startClash, triggerOp } from './fight.ts';
 import { alive, maxHp } from './hero.ts';
 import { commandOp, mapTick } from './map.ts';
 import { addCharge } from './powers.ts';
-import { seedRng, shuffle } from './rng.ts';
-import type { Command, Hero, MatchState, Side, SideState } from './types.ts';
+import { seedRng, shuffle, type RngState } from './rng.ts';
+import type { Camp, Command, Hero, MatchState, Side, SideState } from './types.ts';
 
 /**
  * The whole game is `step(state, commands) -> state`: pure, integer-only and
@@ -23,6 +23,7 @@ const freshOrders = () => ({ ...ORDERS_PER_PHASE });
 /** Without explicit lineups, the seed decides which of each role's two heroes plays for which side. */
 export function createMatch(seed: number, teams: readonly [readonly HeroId[], readonly HeroId[]] = lineups(seed)): MatchState {
   const rng = { map: seedRng(seed, 1), fight: seedRng(seed, 2), cards: seedRng(seed, 3) };
+  const camps = campLayout(seedRng(seed, 4));
   const heroes: Hero[] = [];
   for (const side of [0, 1] as const) {
     teams[side].forEach((id) => {
@@ -39,18 +40,34 @@ export function createMatch(seed: number, teams: readonly [readonly HeroId[], re
   }
   const side = (s: Side): SideState => ({
     mana: 0, hand: [], deck: shuffle(rng.cards, buildDeck(teams[s])), discard: [], plays: [], committed: false,
-    orders: freshOrders(), campIntel: CAMP_SITES.map(() => -1), blindUntil: 0,
+    orders: freshOrders(), campIntel: camps.map(() => -1), blindUntil: 0,
   });
   return {
     seed: seed >>> 0, seq: 0, mapTick: 0, fightPhase: 0, fightTick: 0, phase: 'map',
     heroes,
     minions: [],
     structures: STRUCTURE_SITES.map((st) => ({ ...st, hp: STRUCTURE_HP[st.kind], maxHp: STRUCTURE_HP[st.kind], guardedUntil: 0 })),
-    camps: CAMP_SITES.map((c) => ({ ...c, creeps: CAMP_SIZE, respawnAt: -1 })),
+    camps,
     wards: [], engagements: [], pending: [], initiative: -1,
     sides: [side(0), side(1)],
     rng, winner: null, events: [],
   };
+}
+
+/**
+ * Side 0's five camps, one of each kind in a random order, go to random
+ * cells of its jungle: three in one half, two in the other. Side 1's are the
+ * same camps turned half a circle about the centre, so the Wyrm north-east
+ * of one core is south-west of the other.
+ */
+function campLayout(rng: RngState): Camp[] {
+  const [three, two] = shuffle(rng, JUNGLE_HALVES[0].map((half) => shuffle(rng, [...half])));
+  const cells = [...three!.slice(0, 3), ...two!.slice(0, 2)];
+  const kinds = shuffle(rng, [...CAMP_IDS]);
+  return ([0, 1] as const).flatMap((owner) => cells.map((cell, i) => {
+    const def = campDef(kinds[i]!);
+    return { cell: owner === 0 ? cell : opposite(cell), owner, kind: kinds[i]!, creeps: def.creeps, hp: def.hp, fought: 0, respawnAt: -1 };
+  }));
 }
 
 export function step(prev: MatchState, commands: readonly Command[]): MatchState {

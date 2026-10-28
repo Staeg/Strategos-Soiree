@@ -14,12 +14,9 @@ export const MANA_PER_PHASE = 10;
 export const MANA_KEPT = 10;
 export const CARDS_KEPT = 5;
 
-/** Permille chance, per map tick, that a minion or creep strikes. */
+/** Permille chance, per map tick, that a minion strikes. */
 export const MINION_STRIKE = 100;
 export const MINION_DMG = 50;
-export const CREEP_DMG = 40;
-export const CAMP_SIZE = 4;
-export const CAMP_RESPAWN = 40;
 /** Damage a structure deals an enemy hero on its cell when no enemy minions shield them. */
 export const TOWER_DMG = 120;
 export const STRUCTURE_HP = { core: 3000, inner: 2000, outer: 1500 } as const;
@@ -44,7 +41,7 @@ export const XP_TOWER = 10;
 export const ORDERS_PER_PHASE = { stance: 1, roam: 1 } as const;
 
 export interface StanceDef {
-  /** Minions or creeps killed per map tick on the hero's cell. */
+  /** Minions killed per map tick on the hero's cell; against camps, DMG dealt in multiples of the hero's. */
   clear: number;
   /** Below this percent of max HP the hero walks home. */
   retreat: number;
@@ -59,6 +56,57 @@ export const STANCES: Record<Stance, StanceDef> = {
   passive: { clear: 1, retreat: 40, siege: 0 },
   aggressive: { clear: 2, retreat: 20, siege: 25 },
 };
+
+// ---- jungle camps -------------------------------------------------------------
+
+export interface CampDef {
+  name: string;
+  text: string;
+  /** Creeps in the camp; they die one after another, a hero's damage spilling over. */
+  creeps: number;
+  /** Per creep. Every creep strikes a hero on the camp once every `every` ticks it is fought, like clockwork. */
+  hp: number;
+  dmg: number;
+  res: number;
+  every: number;
+  /** XP per creep, shared between the heroes on the camp. */
+  xp: number;
+  /** Map ticks from the last creep's death until the camp stands again. */
+  respawn: number;
+}
+
+/**
+ * Five camps a side, one of each, placed at random every match (see
+ * `campLayout`). Tuned so a jungler who never leaves the jungle out-earns
+ * a solo laner by a little, must walk home once before finishing a first
+ * full clear, and never runs out of standing camps early on.
+ */
+export const CAMPS = {
+  wallflowers: {
+    name: 'Wallflowers', text: 'Six masked wallflowers that nip from every side, and wilt at a touch.',
+    creeps: 6, hp: 220, dmg: 22, res: 0, every: 3, xp: 7, respawn: 55,
+  },
+  cloakroom: {
+    name: 'Cloakroom', text: 'Four unclaimed coats walking the halls, buttoned up against the cold.',
+    creeps: 4, hp: 480, dmg: 35, res: 10, every: 5, xp: 11, respawn: 60,
+  },
+  topiary: {
+    name: 'Topiary Hounds', text: 'Two hedge-clipped hounds; blades blunt on their boxwood.',
+    creeps: 2, hp: 1000, dmg: 28, res: 60, every: 5, xp: 28, respawn: 65,
+  },
+  chandelier: {
+    name: 'Chandelier', text: 'A crystal chandelier that rarely falls, and falls hard.',
+    creeps: 1, hp: 1400, dmg: 175, res: 20, every: 10, xp: 50, respawn: 65,
+  },
+  wyrm: {
+    name: 'Punch-Bowl Wyrm', text: 'A wyrm coiled in the punch bowl: the most to chew through, the most to gain.',
+    creeps: 1, hp: 3300, dmg: 62, res: 30, every: 4, xp: 84, respawn: 80,
+  },
+} as const satisfies Record<string, CampDef>;
+
+export type CampId = keyof typeof CAMPS;
+export const CAMP_IDS = Object.keys(CAMPS) as CampId[];
+export const campDef = (id: CampId): CampDef => CAMPS[id];
 
 // ---- fight-phase rules -------------------------------------------------------
 

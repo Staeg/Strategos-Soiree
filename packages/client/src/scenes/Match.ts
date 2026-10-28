@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
 import {
-  CARD_OWNER, CARDS_KEPT, CORE, DRAW_EVERY, FIGHT_EVERY, N_CELLS, cardDef, foe, heroDef, laneCell, maxHp,
+  CARD_OWNER, CARDS_KEPT, CORE, DRAW_EVERY, FIGHT_EVERY, N_CELLS, campDef, cardDef, foe, heroDef, laneCell, maxHp,
   type CardId, type GameEvent, type Hero, type MatchView, type Side, type Target,
 } from '@soiree/sim';
+import { CAMP_ART } from '../art/camps.ts';
 import { heroKey, heroOriginX } from '../art/forge.ts';
 import { BLOOD, CREAM, DUSK, GOLD, INK, LEAF, MANA, MANA_LIGHT, MAUVE, NIGHT, PLUM, TEAM, VIOLET } from '../art/palette.ts';
 import { cellAtPoint, cellX, cellY, drawBoard, hexPoints } from '../board.ts';
@@ -74,6 +75,7 @@ export class Match extends Phaser.Scene {
   private structures: Phaser.GameObjects.Image[] = [];
   private creeps: Phaser.GameObjects.Image[][] = [];
   private counts: Phaser.GameObjects.BitmapText[] = [];
+  private campLabel!: Phaser.GameObjects.BitmapText;
   private fog!: Phaser.GameObjects.Graphics;
   private marks!: Phaser.GameObjects.Graphics;
   private bars!: Phaser.GameObjects.Graphics;
@@ -127,13 +129,14 @@ export class Match extends Phaser.Scene {
 
   create(): void {
     this.add.graphics().fillStyle(NIGHT).fillRect(0, 0, W, H);
-    drawBoard(this);
+    drawBoard(this, this.v.camps.map((c) => c.cell));
     this.v.structures.forEach((st) => {
       const key = st.kind === 'core' ? `nexus-${st.side}` : `tower-${st.side}`;
       this.structures.push(this.add.image(cellX(st.cell), cellY(st.cell) + (st.kind === 'core' ? 10 : 7), key).setOrigin(0.5, 1).setDepth(cellY(st.cell) + 90));
     });
     this.v.camps.forEach((c) => {
-      this.creeps.push([0, 1, 2, 3].map((k) => this.add.image(cellX(c.cell) - 6 + (k % 2) * 6, cellY(c.cell) - 6 + Math.floor(k / 2) * 6, 'creep').setDepth(60)));
+      const spots = CAMP_ART[c.kind].spots.slice(0, campDef(c.kind).creeps);
+      this.creeps.push(spots.map(([dx, dy]) => this.add.image(cellX(c.cell) + dx, cellY(c.cell) + dy, `camp-${c.kind}`).setDepth(60)));
     });
     this.fog = this.add.graphics().setDepth(50);
     this.marks = this.add.graphics().setDepth(70);
@@ -143,6 +146,7 @@ export class Match extends Phaser.Scene {
     this.clock = text(this, 108, 6, '', MAUVE).setDepth(1001);
     this.hint = centred(this, HAND_CX, HAND_Y - CARD_H / 2 - 8, '', CREAM).setDepth(1001);
     for (let i = 0; i < 2; i++) this.counts.push(text(this, 0, 0, '').setDepth(72));
+    this.campLabel = centred(this, 0, 0, '').setDepth(72);
 
     this.roster = new Roster(this, this.me);
     this.log = new DebugLog(this, this.me);
@@ -356,9 +360,21 @@ export class Match extends Phaser.Scene {
       if (v.mapTick < st.guardedUntil) bars.lineStyle(1, GOLD, 0.9).strokePoints(hexPoints(st.cell, 3), true);
     });
 
+    // Camps: unseen ones as a faint first creep, a damaged one with a sliver of its HP left, a name under the pointer.
+    this.campLabel.setVisible(false);
     v.camps.forEach((c, i) => {
       const n = c.creeps;
       this.creeps[i]!.forEach((img, k) => img.setVisible(n < 0 ? k === 0 : k < n).setAlpha(n < 0 ? 0.3 : 1));
+      const def = campDef(c.kind);
+      if (c.cell === this.hover) {
+        const label = this.campLabel.setText(def.name).setPosition(cellX(c.cell), cellY(c.cell) - 21).setVisible(true);
+        g.fillStyle(INK, 0.85).fillRect(Math.floor(label.x - label.width / 2) - 1, label.y - 4, label.width + 2, 7);
+      }
+      const left = (n - 1) * def.hp + c.hp, full = def.creeps * def.hp;
+      if (n <= 0 || left >= full) return;
+      const [x, y] = [cellX(c.cell), cellY(c.cell) - 15];
+      bars.fillStyle(INK).fillRect(x - 7, y, 14, 3);
+      bars.fillStyle(CREAM).fillRect(x - 6, y + 1, Math.ceil((12 * left) / full), 1);
     });
 
     // Minions: a swarm of team-coloured dots; the count only for the cell under the pointer.
