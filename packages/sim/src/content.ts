@@ -283,7 +283,7 @@ export const CARDS = {
   // Gnomon
   highNoon: card('High Noon', 2, 5, ['Engage', B], 'enemy', [{ op: 'engage', reach: 1, length: 50, duel: true }], 'Engage (1, 50), just the two of them; nobody may join.'),
   hourHand: card('Hour Hand', 1, 2, ['Tactic', B], 'none', [{ op: 'quick' }], 'He acts on the first tick of his next fight.'),
-  shadowStep: card('Shadow Step', 2, 3, [B], 'none', [{ op: 'shadowStep' }], 'He steps into his shadow.'),
+  shadowStep: card('Shadow Step', 2, 3, [B], 'none', [{ op: 'shadowStep' }], 'He steps one lane cell ahead, into his Long Shadow.'),
   rewind: card('Rewind', 4, 9, [B, 'Ultimate'], 'none', [{ op: 'rewind' }], 'HP and place back to the start of the phase, even from death.'),
 
   // Vespertine

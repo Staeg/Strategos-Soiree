@@ -4,6 +4,39 @@ import { CREAM, DUSK, GOLD, INK, MAUVE, NIGHT, PLUM } from './art/palette.ts';
 export const W = 640;
 export const H = 360;
 
+/** The pixel font's advance and line height, at scale 1. */
+export const GLYPH_W = 4;
+export const LINE_H = 7;
+
+/** Greedy word wrap to `cols` characters; a word longer than a line is split. */
+export function wrap(value: string, cols: number): string[] {
+  const lines: string[] = [];
+  let line = '';
+  for (let word of value.split(/\s+/).filter(Boolean)) {
+    while (word.length > cols) {
+      if (line) { lines.push(line); line = ''; }
+      lines.push(word.slice(0, cols));
+      word = word.slice(cols);
+    }
+    if (!line) line = word;
+    else if (line.length + 1 + word.length <= cols) line += ` ${word}`;
+    else { lines.push(line); line = word; }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+/** At most `max` lines; anything cut is marked with an ellipsis that still fits in `cols`. */
+export function clip(lines: string[], max: number, cols: number): string[] {
+  if (lines.length <= max) return lines;
+  if (max <= 0) return [];
+  const kept = lines.slice(0, max);
+  let last = kept[max - 1]!;
+  while (last.length + 3 > cols && last.includes(' ')) last = last.slice(0, last.lastIndexOf(' '));
+  kept[max - 1] = `${last.slice(0, cols - 3)}...`;
+  return kept;
+}
+
 export function text(scene: Phaser.Scene, x: number, y: number, value: string, tint = CREAM, scale = 1) {
   return scene.add.bitmapText(x, y, 'pixel', value.toUpperCase()).setTint(tint).setScale(scale);
 }

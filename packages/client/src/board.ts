@@ -8,7 +8,7 @@ import { DUSK, INK, MAUVE, PLUM, TEAM } from './art/palette.ts';
  */
 export const HEX_W = 28;
 export const HEX_H = 32;
-export const ORIGIN = { x: 164, y: 184 };
+export const ORIGIN = { x: 320, y: 134 };
 
 export const cellX = (cell: number): number => ORIGIN.x + HEX_W * CELLS[cell]!.q + (HEX_W / 2) * CELLS[cell]!.r;
 export const cellY = (cell: number): number => ORIGIN.y + (HEX_H * 3 / 4) * CELLS[cell]!.r;

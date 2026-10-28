@@ -53,7 +53,17 @@ the rest possible:
 **Art** is generated at boot by `client/src/art/forge.ts` from glyph grids
 and small procedures (heroes, nexus crystals, cards, effects, the 3×5 font).
 Each texture has a stable key, so real sprite sheets can replace them one at
-a time.
+a time. The placeholder art follows one principle, written down with the
+hero palettes under "Placeholder art" in
+[docs/heroes-draft.md](docs/heroes-draft.md): make every character as
+visually distinct as possible.
+
+**The match screen** puts your heroes down the left and the rival's down the
+right (hover a bar to slide it out; rivals out of sight are greyed and show
+only what was last seen), the board in the middle, the hand along the bottom
+in every phase, and mana and the initiative timeline bottom right. Hold
+**Ctrl** over a card or a hero bar for its full rules. Hotkeys hide behind
+the **?** in the bottom-left corner, next to a debug **log** of every event.
 
 ## Deploying
 
