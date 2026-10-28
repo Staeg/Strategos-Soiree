@@ -6,4 +6,5 @@ export * from './hero.ts';
 export * from './vision.ts';
 export * from './sim.ts';
 export * from './ai.ts';
+export * from './reach.ts';
 export * from './match.ts';

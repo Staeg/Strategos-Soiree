@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CELLS, CORE, JUNGLE, LANES, N_CELLS, STRUCTURE_SITES, territory } from '@soiree/sim';
+import { CELLS, CORE, LANES, N_CELLS, STRUCTURE_SITES, territory } from '@soiree/sim';
 import { DUSK, INK, MAUVE, PLUM, TEAM } from './art/palette.ts';
 
 /**
@@ -8,7 +8,8 @@ import { DUSK, INK, MAUVE, PLUM, TEAM } from './art/palette.ts';
  */
 export const HEX_W = 28;
 export const HEX_H = 32;
-export const ORIGIN = { x: 320, y: 134 };
+/** The board sits low, a few pixels above the hand, leaving the top margin for toasts. */
+export const ORIGIN = { x: 320, y: 161 };
 
 export const cellX = (cell: number): number => ORIGIN.x + HEX_W * CELLS[cell]!.q + (HEX_W / 2) * CELLS[cell]!.r;
 export const cellY = (cell: number): number => ORIGIN.y + (HEX_H * 3 / 4) * CELLS[cell]!.r;
@@ -36,10 +37,10 @@ const RIVER = 0x2a3550;
 
 /**
  * The ballroom floor at the end of the world: lanes are carpet runners,
- * the jungle is a clipped garden in each side's tint, the river a strip of
- * dark mirror between them. Camps stand in place of a topiary.
+ * the jungle is open lawn in each side's tint, the river a strip of
+ * dark mirror between them.
  */
-export function drawBoard(scene: Phaser.Scene, camps: readonly number[]): void {
+export function drawBoard(scene: Phaser.Scene): void {
   const g = scene.add.graphics().setDepth(0);
   for (let c = 0; c < N_CELLS; c++) {
     const side = territory(c);
@@ -53,10 +54,6 @@ export function drawBoard(scene: Phaser.Scene, camps: readonly number[]): void {
     } else {
       g.fillStyle(side === null ? 0x3b4a6b : PLUM, 0.5).fillRect(cellX(c) - 5, cellY(c) + 4, 10, 1);
     }
-  }
-  for (const c of JUNGLE) {
-    if (territory(c) === null || camps.includes(c)) continue;
-    scene.add.image(cellX(c) + (c % 2 ? 5 : -5), cellY(c) - 3, 'hedge').setDepth(1).setAlpha(0.8);
   }
   // Corner plinths under each core, in livery.
   for (const side of [0, 1] as const) {

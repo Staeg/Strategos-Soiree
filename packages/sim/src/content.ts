@@ -324,8 +324,8 @@ export const CARDS = {
   holdTheLine: card('Hold the Line', 2, 3, [], 'tower', [{ op: 'guardTower' }], 'Target allied tower takes half damage until the next fight phase.'),
 
   // The Tallow Duchess
-  snuff: card('Snuff', 3, 4, ['Engage', B], 'enemy', [{ op: 'engage', reach: 1, length: 30 }], 'Engage (1, 30).'),
-  hotWax: card('Hot Wax', 2, 6, ['Tactic', B], 'enemy', [{ op: 'slow', who: 'target', pct: 50, ticks: 20 }], "In the Duchess's next fight, the target has half SPD for 20 ticks."),
+  snuff: card('Snuff', 3, 5, ['Engage', B], 'enemy', [{ op: 'engage', reach: 1, length: 30 }], 'Engage (1, 30).'),
+  hotWax: card('Hot Wax', 2, 3, ['Tactic', B], 'enemy', [{ op: 'slow', who: 'target', pct: 50, ticks: 20 }], "In the Duchess's next fight, the target has half SPD for 20 ticks."),
   rekindle: card('Rekindle', 1, 1, [B], 'none', [{ op: 'heal', pct: 25 }], 'The Duchess heals 25%.'),
 
   // Gnomon
@@ -337,7 +337,7 @@ export const CARDS = {
   // Vespertine
   outOfTheDark: card('Out of the Dark', 2, 2, ['Engage', B], 'enemy', [{ op: 'engage', reach: 1, length: 25 }], 'Engage (1, 25).'),
   starPin: card('Star Pin', 1, 4, ['Tactic', B], 'enemy', [{ op: 'focus', ticks: 15 }], "In Vespertine's next fight, every ally attacks the target for 15 ticks."),
-  fade: card('Fade', 1, 7, ['Tactic', B], 'none', [{ op: 'fade', tick: 10 }], 'Vespertine leaves the next fight after tick 10.'),
+  fade: card('Fade', 1, 4, ['Tactic', B], 'none', [{ op: 'fade', tick: 10 }], 'Vespertine leaves the next fight after tick 10.'),
   nightfall: card('Nightfall', 3, 1, [B, 'Ultimate'], 'none', [{ op: 'nightfall' }], 'Until the next fight phase the enemy sees only where it stands.'),
 
   // Carrion Abacus
@@ -346,8 +346,8 @@ export const CARDS = {
   sumOfDebts: card('Sum of Debts', 3, 8, ['Join', B], 'none', [{ op: 'join', reach: 2 }, { op: 'opening' }], "Carrion Abacus joins (2); the Abacus's first turn there is a Reckon."),
 
   // Moth Tenor
-  lure: card('Lure', 2, 4, ['Engage', B], 'enemy', [{ op: 'engage', reach: 2, length: 50, pull: true }], "Engage (2, 50), fought on Moth Tenor's cell."),
-  dustOfWings: card('Dust of Wings', 1, 5, ['Tactic', B], 'none', [{ op: 'slow', who: 'enemies', spd: 3, ticks: 20 }], "In Moth Tenor's next fight, every enemy -3 SPD for 20 ticks."),
+  lure: card('Lure', 2, 6, ['Engage', B], 'enemy', [{ op: 'engage', reach: 2, length: 50, pull: true }], "Engage (2, 50), fought on Moth Tenor's cell."),
+  dustOfWings: card('Dust of Wings', 1, 3, ['Tactic', B], 'none', [{ op: 'slow', who: 'enemies', spd: 3, ticks: 20 }], "In Moth Tenor's next fight, every enemy -3 SPD for 20 ticks."),
   lampSeason: card('Lamp Season', 2, 2, [B], 'none', [{ op: 'rally', where: 'lane' }], "Next map phase, allied minions in Moth Tenor's lane strike twice as often."),
   lanternProcession: card('Lantern Procession', 3, 3, [B, 'Ultimate'], 'none', [{ op: 'procession', n: 6 }], "Up to 6 allied minions near Moth Tenor fight beside the Tenor in the next fight."),
 
@@ -369,7 +369,7 @@ export const CARDS = {
 
   // Scrimshander
   killLine: card('Kill Line', 3, 8, ['Engage', B], 'enemy', [{ op: 'engage', reach: 1, length: 40 }], 'Engage (1, 40).'),
-  boneNeedle: card('Bone Needle', 1, 6, ['Tactic', B], 'none', [{ op: 'firstHit', pct: 200 }], "Scrimshander's first attack in the next fight deals 200% DMG."),
+  boneNeedle: card('Bone Needle', 1, 2, ['Tactic', B], 'none', [{ op: 'firstHit', pct: 200 }], "Scrimshander's first attack in the next fight deals 200% DMG."),
   ivoryWard: card('Ivory Ward', 2, 2, [B], 'none', [{ op: 'evade' }], 'Later engages cannot target Scrimshander.'),
 
   // Brass Reliquary

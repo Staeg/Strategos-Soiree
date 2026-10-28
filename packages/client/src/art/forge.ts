@@ -148,12 +148,6 @@ function forgeEffects(scene: Phaser.Scene): void {
     const { rows } = CAMP_ART[kind];
     canvas(scene, `camp-${kind}`, rows[0]!.length, rows.length, (ctx) => paint(ctx, rows, 0, 0, garden));
   }
-  // Jungle: a clipped topiary on a pot.
-  canvas(scene, 'hedge', 7, 9, (ctx) => {
-    rect(ctx, '#2f5a3a', 1, 0, 5, 1); rect(ctx, '#2f5a3a', 0, 1, 7, 4); rect(ctx, '#2f5a3a', 1, 5, 5, 1);
-    rect(ctx, '#4f8a55', 1, 1, 3, 2); rect(ctx, '#7fc06a', 2, 1, 1, 1);
-    rect(ctx, css(AMBER), 2, 6, 3, 3); rect(ctx, css(GOLD), 2, 6, 3, 1);
-  });
 }
 
 function frameStrip(tex: Phaser.Textures.CanvasTexture, count: number, w: number, h: number): void {
