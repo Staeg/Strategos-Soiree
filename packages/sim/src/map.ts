@@ -1,13 +1,13 @@
 import { CORE, LANES, LANES_AT, NEIGHBOURS, laneCell, distance, stepToward } from './board.ts';
 import {
-  BASE_HEAL, CAMP_RESPAWN, CAMP_SIZE, CREEP_DMG, FIGHT_EVERY, MINION_DMG, MINION_STRIKE, ROLE_LANE, STANCES,
-  TOWER_DMG, WAVE_EVERY, WAVE_SIZE, XP_MINION, XP_TOWER, heroDef, type CommandOp, type MapOp,
+  BASE_HEAL, FIGHT_EVERY, MINION_DMG, MINION_STRIKE, ROLE_LANE, STANCES,
+  TOWER_DMG, WAVE_EVERY, WAVE_SIZE, XP_MINION, XP_TOWER, campDef, heroDef, type CommandOp, type MapOp,
 } from './content.ts';
 import { alive, awardXp, foe, heal, heroesOn, idiv, kill, maxHp, mitigate, stats } from './hero.ts';
 import { addCharge, aura, boon, grow, shadowCell } from './powers.ts';
 import { chance, randInt } from './rng.ts';
 import { visibility } from './vision.ts';
-import type { Hero, LaneId, MatchState, Side, Structure } from './types.ts';
+import type { Camp, Hero, LaneId, MatchState, Side, Structure } from './types.ts';
 
 /**
  * One map tick, about a second of the match. Heroes decide and walk first;
@@ -45,7 +45,7 @@ export function mapTick(s: MatchState): void {
   march(s, held);
 
   for (const c of s.camps) {
-    if (c.respawnAt >= 0 && s.mapTick >= c.respawnAt) [c.creeps, c.respawnAt] = [CAMP_SIZE, -1];
+    if (c.respawnAt >= 0 && s.mapTick >= c.respawnAt) [c.creeps, c.hp, c.fought, c.respawnAt] = [campDef(c.kind).creeps, campDef(c.kind).hp, 0, -1];
   }
   if ((s.mapTick - 1) % WAVE_EVERY === 0) {
     for (const lane of [0, 1, 2] as const) {
@@ -141,25 +141,22 @@ function uncovered(s: MatchState, h: Hero): boolean {
 }
 
 /**
- * Junglers walk to the nearest camp they believe is up: seen standing, or
- * not seen empty for a full respawn. Aggressive junglers count the enemy's
- * camps too.
+ * Junglers head for the camp they can start on soonest: the walk there or
+ * the wait for it to stand again, whichever is longer, by what their side
+ * last saw of it. Aggressive junglers also raid enemy camps believed up.
  */
 function campGoal(s: MatchState, h: Hero, vis: boolean[]): number {
   const intel = s.sides[h.side].campIntel;
-  const up = (i: number) => {
-    const c = s.camps[i]!;
-    return vis[c.cell] ? c.creeps > 0 : intel[i]! < 0 || s.mapTick >= intel[i]! + CAMP_RESPAWN;
-  };
   let best = -1, bestKey = Infinity;
   s.camps.forEach((c, i) => {
-    if (!up(i) || (c.owner !== h.side && h.stance !== 'aggressive')) return;
-    const key = distance(h.cell, c.cell) * 100 + (c.owner === h.side ? 0 : 10) + (i % 4);
+    const seenEmpty = vis[c.cell] && c.creeps === 0;
+    const wait = intel[i]! < 0 ? 0 : Math.max(seenEmpty ? 1 : 0, intel[i]! + campDef(c.kind).respawn - s.mapTick);
+    if (c.owner !== h.side && (h.stance !== 'aggressive' || wait > 0)) return;
+    const walk = distance(h.cell, c.cell);
+    const key = (Math.max(walk, wait) * 100 + walk) * 100 + (c.owner === h.side ? 0 : 50) + i;
     if (key < bestKey) [best, bestKey] = [i, key];
   });
-  if (best >= 0) return s.camps[best]!.cell;
-  if (s.camps.some((c) => c.cell === h.cell)) return h.cell;
-  return s.camps.find((c) => c.owner === h.side)!.cell;
+  return s.camps[best]!.cell;
 }
 
 function noteCamps(s: MatchState, vis: readonly [boolean[], boolean[]]): void {
@@ -280,12 +277,23 @@ export function cullMinions(s: MatchState, cell: number, side: Side, n: number, 
   return died;
 }
 
-function cullCreeps(s: MatchState, camp: MatchState['camps'][number], n: number, side: Side): number {
-  const died = Math.min(n, camp.creeps);
-  camp.creeps -= died;
-  if (camp.creeps === 0 && died > 0) camp.respawnAt = s.mapTick + CAMP_RESPAWN;
-  awardXp(s, heroesOn(s, camp.cell, side), XP_MINION * died, XP_MINION * died);
-  return died;
+/**
+ * Damage cuts down a camp's creeps in turn, spilling over from one to the
+ * next; the heroes of `side` on the camp share the XP of every creep felled.
+ */
+function damageCamp(s: MatchState, camp: Camp, amount: number, side: Side): void {
+  const def = campDef(camp.kind);
+  let died = 0;
+  for (let left = amount; left > 0 && camp.creeps > 0;) {
+    const dealt = Math.min(left, camp.hp);
+    camp.hp -= dealt;
+    left -= dealt;
+    if (camp.hp > 0) break;
+    died++;
+    if (--camp.creeps > 0) camp.hp = def.hp;
+  }
+  if (camp.creeps === 0 && died > 0) camp.respawnAt = s.mapTick + def.respawn;
+  awardXp(s, heroesOn(s, camp.cell, side), 0, def.xp * died);
 }
 
 export function damageStructure(s: MatchState, index: number, amount: number): void {
@@ -305,8 +313,9 @@ export function damageStructure(s: MatchState, index: number, amount: number): v
 }
 
 /**
- * Every cell fights at once. Heroes clear 1 or 2 minions (or creeps) by
- * stance, or chip a structure no minion shields. Each minion strikes with a
+ * Every cell fights at once. Heroes clear 1 or 2 minions by stance (or hit
+ * a camp for 1 or 2 times their DMG), or chip a structure no minion shields.
+ * Camp creeps strike on a fixed beat, every creep at once. Each minion strikes with a
  * 10% chance: an enemy minion if any, else the structure, else a hero (and a
  * minion that strikes a hero stays put this tick, which staggers waves).
  * Structures kill a minion a tick, or shoot a hero no minion shields.
@@ -325,7 +334,7 @@ function skirmish(s: MatchState): number[] {
 
   const kills = new Map<number, number>();
   const kill1 = (cell: number, side: Side, n: number) => kills.set(cell * 2 + side, (kills.get(cell * 2 + side) ?? 0) + n);
-  const creepKills: [number, number][] = s.camps.map(() => [0, 0]);
+  const campDamage: [number, number][] = s.camps.map(() => [0, 0]);
   const structureHits = new Map<number, number>();
   const hitStructure = (i: number, n: number) => structureHits.set(i, (structureHits.get(i) ?? 0) + n);
   const heroHits: { h: Hero; amount: number; by: 'minion' | 'tower' | 'creep' }[] = [];
@@ -341,7 +350,7 @@ function skirmish(s: MatchState): number[] {
     if (at(h.cell, enemy) > 0) {
       kill1(h.cell, enemy, clear);
       if (aura(s, h, 'carve')) addCharge(s, h, Math.min(clear, at(h.cell, enemy)));
-    } else if (camp >= 0) creepKills[camp]![h.side] += clear;
+    } else if (camp >= 0) campDamage[camp]![h.side] += mitigate(stats(h).dmg * clear, campDef(s.camps[camp]!.kind).res);
     if (si >= 0 && st.siege > 0 && s.structures[si]!.side === enemy && at(h.cell, enemy) === 0) hitStructure(si, st.siege);
   }
 
@@ -367,11 +376,12 @@ function skirmish(s: MatchState): number[] {
 
   for (const c of s.camps) {
     if (c.creeps === 0 || heroesOn(s, c.cell).length === 0) continue;
+    const def = campDef(c.kind);
+    if (++c.fought % def.every !== 0) continue;
     for (let k = 0; k < c.creeps; k++) {
-      if (!chance(rng, MINION_STRIKE)) continue;
       const here = heroesOn(s, c.cell);
       const h = here[randInt(rng, here.length)]!;
-      heroHits.push({ h, amount: mitigate(CREEP_DMG, stats(h).res), by: 'creep' });
+      heroHits.push({ h, amount: mitigate(def.dmg, stats(h).res), by: 'creep' });
     }
   }
 
@@ -386,7 +396,7 @@ function skirmish(s: MatchState): number[] {
   for (const key of [...kills.keys()].sort((a, b) => a - b)) cullMinions(s, key >> 1, (key & 1) as Side, kills.get(key)!, true);
   s.camps.forEach((c, i) => {
     const first: Side = (s.mapTick & 1) as Side;
-    for (const side of [first, foe(first)]) if (creepKills[i]![side] > 0) cullCreeps(s, c, creepKills[i]![side], side);
+    for (const side of [first, foe(first)]) if (campDamage[i]![side] > 0) damageCamp(s, c, campDamage[i]![side], side);
   });
   for (const [i, n] of [...structureHits].sort((a, b) => a[0] - b[0])) {
     damageStructure(s, i, n);

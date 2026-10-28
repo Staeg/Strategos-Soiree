@@ -48,7 +48,7 @@ export function viewFor(s: MatchState, side: Side): MatchView {
   v.rng = { map: [0, 0, 0, 0], fight: [0, 0, 0, 0], cards: [0, 0, 0, 0] };
   for (const h of v.heroes) if (!heroSeen(s, side, s.heroes[h.uid]!, visible)) h.cell = -1;
   v.minions = v.minions.filter((m) => m.side === side || visible[laneCell(m.lane, m.pos)]);
-  for (const c of v.camps) if (!visible[c.cell]) c.creeps = -1;
+  for (const c of v.camps) if (!visible[c.cell]) [c.creeps, c.hp] = [-1, -1];
   v.wards = v.wards.filter((w) => w.side === side);
   v.events = s.events.filter((e) => eventVisible(s, e, side, visible));
   return v;

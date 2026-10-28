@@ -1,6 +1,6 @@
 import type { RngState } from './rng.ts';
 import type { StructureKind } from './board.ts';
-import type { ArmedOp, CardId, HeroId } from './content.ts';
+import type { ArmedOp, CampId, CardId, HeroId } from './content.ts';
 
 export type Side = 0 | 1;
 /** 0 top, 1 mid, 2 bot. */
@@ -143,7 +143,12 @@ export interface Structure {
 export interface Camp {
   cell: number;
   owner: Side;
+  kind: CampId;
+  /** Creeps still standing, and the HP left on the one being fought. */
   creeps: number;
+  hp: number;
+  /** Ticks fought since it last stood whole: creeps strike on every `every`th. */
+  fought: number;
   /** Map tick the camp refills, or -1 while it stands. */
   respawnAt: number;
 }

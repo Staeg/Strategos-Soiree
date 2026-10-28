@@ -18,6 +18,7 @@ npm install
 npm run dev          # play at http://localhost:5173
 npm test             # determinism and rules tests
 npm run arena -- 50  # AI-vs-AI win-rate table over 50 seeds per pairing
+npm run jungle -- 200 # jungle camp tuning bench: XP, walks home, respawns
 npm run build        # static site in packages/client/dist
 ```
 
