@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
-import { createAgent, DIFFICULTIES, HERO_IDS, type Difficulty } from '@soiree/sim';
+import { DIFFICULTIES, HERO_IDS, type Difficulty } from '@soiree/sim';
 import { heroKey, heroOriginX } from '../art/forge.ts';
 import { GOLD, MAUVE } from '../art/palette.ts';
+import { autosave, clearAutosave, loadAutosave, watch } from '../save.ts';
 import { LocalSession } from '../session.ts';
 import { backdrop, button, centred, W } from '../ui.ts';
 
@@ -31,10 +32,28 @@ export class Title extends Phaser.Scene {
       const b = button(this, W / 2 + (i - (DIFFICULTIES.length - 1) / 2) * 110, 300, 100, d, () => this.begin(d));
       b.on('pointerover', () => hint.setText(BLURB[d].toUpperCase()));
     });
+
+    const save = loadAutosave();
+    if (save) {
+      const { mapTick, fightPhase } = save.state;
+      const b = button(this, W / 2, 278, 100, 'continue', () => this.play(LocalSession.resume(save)));
+      b.on('pointerover', () => hint.setText(`the ${save.setup.difficulty} match, from tick ${mapTick}${fightPhase ? ` (fight ${fightPhase})` : ''}`.toUpperCase()));
+    }
   }
 
   private begin(difficulty: Difficulty): void {
     const seed = (Date.now() ^ (Math.random() * 0x7fffffff)) >>> 0;
-    this.scene.start('match', { session: new LocalSession(seed, createAgent(difficulty, seed ^ 0x5eed)) });
+    this.play(new LocalSession({ seed, difficulty, side: 0 }));
+  }
+
+  /** Auto-saves as the ball begins and as every fight phase opens; a finished match leaves nothing to continue. */
+  private play(session: LocalSession): void {
+    watch(session);
+    autosave(session);
+    session.onPhase = (phase) => {
+      if (phase === 'plan') autosave(session);
+      if (phase === 'over') clearAutosave();
+    };
+    this.scene.start('match', { session });
   }
 }

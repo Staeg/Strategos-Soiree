@@ -21,6 +21,18 @@ npm run arena -- 50  # AI-vs-AI win-rate table over 50 seeds per pairing
 npm run build        # static site in packages/client/dist
 ```
 
+## Saves and bug reports
+
+The game auto-saves as a match begins and as every fight phase opens; the
+title screen then offers **Continue**. A save is the match's setup plus the
+journal of the player's commands, which replays the match exactly (AI
+included), with a snapshot of the full state as a fallback for saves from an
+older build.
+
+If the game breaks, an overlay offers the same record as a **bug report** to
+copy or download: the error, its stack and the whole match, replayable.
+**F8** downloads one at any time, for bugs that do not crash the game.
+
 ## Architecture
 
 ```

@@ -89,7 +89,7 @@ export class Match extends Phaser.Scene {
   private orders!: Layer;
   private help!: Layer;
   private preview!: Layer;
-  private toasts: Phaser.GameObjects.BitmapText[] = [];
+  private toasts: Phaser.GameObjects.Container[] = [];
   private mode: Mode = { kind: 'idle' };
   private selected = -1;
   private hover = -1;
@@ -499,19 +499,24 @@ export class Match extends Phaser.Scene {
     }
   }
 
-  /** A short line that drifts in under the top bar and fades; a few can stack. */
+  /**
+   * A short line that drifts in under the top bar and fades; a few can stack.
+   * Line and backing plate share one container, so evicting a toast early
+   * takes its tween and plate with it.
+   */
   private toast(line: string, tint = CREAM): void {
     this.toasts = this.toasts.filter((t) => t.active);
-    if (this.toasts.length >= 4) this.toasts.shift()!.destroy();
-    const t = centred(this, W / 2, 0, line, tint).setDepth(2900).setAlpha(0);
-    this.toasts.push(t);
+    if (this.toasts.length >= 4) {
+      const old = this.toasts.shift()!;
+      this.tweens.killTweensOf(old);
+      old.destroy();
+    }
+    const t = centred(this, 0, 0, line, tint);
+    const bg = this.add.graphics().fillStyle(INK, 0.75).fillRect(-t.width / 2 - 2, -4, t.width + 4, 8);
+    const c = this.add.container(W / 2, 0, [bg, t]).setDepth(2900).setAlpha(0);
+    this.toasts.push(c);
     this.toasts.forEach((x, i) => x.setY(24 + i * 9));
-    const bg = this.add.graphics().setDepth(2899);
-    this.tweens.add({
-      targets: t, alpha: 1, duration: 150, hold: 2600, yoyo: true,
-      onUpdate: () => bg.clear().fillStyle(INK, 0.75 * t.alpha).fillRect(t.x - t.width / 2 - 2, t.y - 4, t.width + 4, 8),
-      onComplete: () => { t.destroy(); bg.destroy(); },
-    });
+    this.tweens.add({ targets: c, alpha: 1, duration: 150, hold: 2600, yoyo: true, onComplete: () => c.destroy() });
   }
 
   private float(x: number, y: number, value: string, tint: number): void {
@@ -735,6 +740,7 @@ export class Match extends Phaser.Scene {
         ['space', 'pause'],
         ['1-4', 'speed'],
         ['l', 'toggle the log'],
+        ['f8', 'save a bug report'],
       ];
       const w = 196, hgt = rows.length * 9 + 14;
       const [x, y] = [4, H - 20 - hgt];
