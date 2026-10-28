@@ -114,6 +114,20 @@ describe('map phase', () => {
     expect(s.heroes[2]!.roam).toBe(-1);
   });
 
+  it('holds a hero under its own tower and turns the enemy hero there on the tower', () => {
+    const s = createMatch(5);
+    const [ours, theirs] = [s.heroes.find((h) => h.side === 0 && h.role === 'top')!, s.heroes.find((h) => h.side === 1 && h.role === 'top')!];
+    const tower = s.structures.find((st) => st.side === 0 && st.kind === 'outer' && LANES[0].includes(st.cell))!;
+    s.heroes.filter((h) => h !== ours && h !== theirs).forEach((h) => { h.cell = CORE[h.side]; h.retreating = true; });
+    for (const h of [ours, theirs]) [h.cell, h.roam] = [tower.cell, tower.cell];
+    const [hp, towerHp] = [ours.hp, tower.hp];
+    advance(s, []);
+    expect(ours.cell).toBe(tower.cell);
+    expect(ours.hp).toBe(hp);
+    expect(theirs.cell).not.toBe(tower.cell);
+    expect(towerHp - tower.hp).toBe(stats(theirs).dmg);
+  });
+
   it('shares XP exactly', () => {
     const s = createMatch(5);
     awardXp(s, s.heroes.slice(3, 5), 1, 1);

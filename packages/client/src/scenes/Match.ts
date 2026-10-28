@@ -155,6 +155,12 @@ export class Match extends Phaser.Scene {
    * FIGURE_CAP times closer, then shrinking so figures stop growing.
    */
   private lens = 1;
+  /**
+   * The grid figures snap to: the lens once the camera has settled, 0 while
+   * it glides. A grid that shrinks every frame would round each figure a
+   * different way each frame, and they would shiver all the way in.
+   */
+  private grain = 1;
   /** Bursts and numbers on the board, with their own scale, kept to the lens. */
   private lensed: { o: Phaser.GameObjects.Components.Transform & Phaser.GameObjects.GameObject; scale: number }[] = [];
 
@@ -182,6 +188,7 @@ export class Match extends Phaser.Scene {
     this.watching = { cells: [], until: 0 };
     this.eye = { fx: W / 2, fy: H / 2, ax: W / 2, ay: H / 2 };
     this.lens = 1;
+    this.grain = 1;
     this.lensed = [];
   }
 
@@ -533,6 +540,7 @@ export class Match extends Phaser.Scene {
     // The camera zooms about its middle: put world point (fx, fy) at screen point (ax, ay).
     cam.setZoom(z).setScroll(this.eye.fx - W / 2 - (this.eye.ax - W / 2) / z, this.eye.fy - H / 2 - (this.eye.ay - H / 2) / z);
     this.lens = Math.min(1, FIGURE_CAP / z);
+    this.grain = z === zoom ? this.lens : 0;
     this.lensed = this.lensed.filter(({ o }) => o.active);
     for (const { o, scale } of this.lensed) o.setScale(scale * this.lens);
   }
@@ -542,7 +550,7 @@ export class Match extends Phaser.Scene {
     const g = this.marks.clear();
     const bars = this.bars.clear();
     // Figures, and the bars and marks on them, are drawn in pixels `px` world units wide.
-    const px = this.lens;
+    const px = this.lens, grain = this.grain;
     const pulse = 0.6 + 0.4 * Math.sin(time / 120);
 
     // Structures, with a sliver of health beneath each.
@@ -576,7 +584,7 @@ export class Match extends Phaser.Scene {
 
     // Minions: a swarm of team-coloured dots, walking cell to cell in step with the heroes.
     for (const d of minionDots(v, alpha)) {
-      const [x, y] = [snap(d.x, px), snap(d.y, px)];
+      const [x, y] = [snap(d.x, grain), snap(d.y, grain)];
       g.fillStyle(INK, 0.7 * d.alpha).fillRect(x, y + px, px, px);
       g.fillStyle(TEAM[d.side].light, d.alpha).fillRect(x, y, px, px);
     }
@@ -629,14 +637,14 @@ export class Match extends Phaser.Scene {
       const x = moving ? Phaser.Math.Linear(before.x, now.x, alpha) : now.x;
       const y = moving ? Phaser.Math.Linear(before.y, now.y, alpha) : now.y;
       const reach = Math.sin(Math.PI * Phaser.Math.Clamp((time - hv.lunge.at) / 220, 0, 1)) * px;
-      hv.sprite.setScale(px).setPosition(snap(x + hv.lunge.dx * reach, px), snap(y + hv.lunge.dy * reach, px)).setDepth(100 + y);
+      hv.sprite.setScale(px).setPosition(snap(x + hv.lunge.dx * reach, grain), snap(y + hv.lunge.dy * reach, grain)).setDepth(100 + y);
       if (time < hv.flash) hv.sprite.setTintFill(0xffffff); else hv.sprite.clearTint();
       if (time > hv.striking) {
         const anim = moving ? `${key}-walk` : `${key}-idle`;
         if (hv.sprite.anims.currentAnim?.key !== anim) hv.sprite.play(anim);
       }
       const max = maxHp(h);
-      const [sx, sy] = [snap(x, px), snap(y, px)];
+      const [sx, sy] = [snap(x, grain), snap(y, grain)];
       const [bx, by] = [sx - 5 * px, sy - 17 * px];
       bars.fillStyle(INK).fillRect(bx, by, 10 * px, 3 * px);
       bars.fillStyle(h.retreating ? GOLD : TEAM[h.side].main).fillRect(bx + px, by + px, Math.max(1, Math.ceil((8 * h.hp) / max)) * px, px);
