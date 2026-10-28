@@ -21,6 +21,8 @@ export interface Session {
   readonly alpha: number;
   speed: number;
   paused: boolean;
+  /** Only one player is in the match, so the scene may pause it on its own, such as when a fight starts. */
+  readonly solo: boolean;
   submit(intent: Intent): void;
   update(deltaMs: number): GameEvent[];
 }
@@ -53,6 +55,7 @@ export class LocalSession implements Session {
   prev: MatchView;
   speed = 1;
   paused = false;
+  readonly solo = true;
   readonly side: Side;
   readonly journal: Journal = [];
   /** Called after each step that changes the phase, with the new one. */

@@ -16,8 +16,8 @@ export const iconKey = (id: CardId, side: Side) => `icon-${ICON[cardDef(id).effe
 
 export const CARD_W = 56;
 export const CARD_H = 78;
-/** The enlarged card: twice as wide, as tall as its text needs. */
-export const BIG_W = 120;
+/** The enlarged card: twice as wide unless told otherwise, as tall as its text needs. */
+const BIG_W = 120;
 const BIG_MIN_H = 156;
 
 /**
@@ -26,18 +26,19 @@ const BIG_MIN_H = 156;
  * that hero's face bottom-left. Every line is wrapped to the card and
  * clipped to it, so no text ever leaves the frame.
  *
- * `big` draws the hover enlargement: twice the size, the whole short text,
- * the keywords, and with `rules` the full ruling from `cardRules` in place
- * of the reminder text; it grows downwards to fit, never past `maxH`.
+ * `big` draws the enlargement for the inspect panel: `w` wide (BIG_W by
+ * default), the header at twice the size, the whole short text, the
+ * keywords, and with `rules` the full ruling from `cardRules` in place of
+ * the reminder text; it grows to fit its words, never past `maxH`.
  */
 export function cardFace(
   scene: Phaser.Scene, id: CardId, side: Side,
-  opts: { big?: boolean; rules?: boolean; maxH?: number } = {},
+  opts: { big?: boolean; rules?: boolean; maxH?: number; w?: number } = {},
 ): Phaser.GameObjects.Container {
   const def = cardDef(id);
   const big = opts.big === true;
   const k = big ? 2 : 1;
-  const w = big ? BIG_W : CARD_W;
+  const w = big ? opts.w ?? BIG_W : CARD_W;
   const ultimate = def.keywords.includes('Ultimate');
   const inner = w - 8;
   const owner = CARD_OWNER[id];
@@ -54,7 +55,7 @@ export function cardFace(
   const bodyTop = nameTop + name.length * LINE_H * k + 2;
   const footer = big && (keywords.length || owner) ? Math.max(keywords.length * LINE_H + 4, owner ? badgeH - 2 : 0) : !big && owner ? badgeH - 4 : 0;
   const h = big
-    ? Math.min(opts.maxH ?? Infinity, Math.max(BIG_MIN_H, bodyTop + bodyLines.length * LINE_H + footer + 4))
+    ? Math.min(opts.maxH ?? Infinity, Math.max(Math.min(BIG_MIN_H, opts.maxH ?? Infinity), bodyTop + bodyLines.length * LINE_H + footer + 4))
     : CARD_H;
   const top = -h / 2, left = -w / 2;
 

@@ -72,13 +72,24 @@ hero palettes under "Placeholder art" in
 visually distinct as possible.
 
 **The match screen** puts your heroes down the left and the rival's down the
-right as their figures (hover a bar to slide it out with the name and the
-rest; rivals out of sight are greyed and show only what was last seen), the board in the middle, the hand along the bottom
-in every phase, and mana and the initiative timeline bottom right. HP, DMG, RES and SPD
-are drawn as a heart, sword, shield and boot everywhere. A hero's own cards
-carry its face, and hovering one calls the hero out on the board and in its
-bar. Hold **Ctrl** over a card or a hero bar for its full rules. Hotkeys hide behind
-the **?** in the bottom-left corner, next to a debug **log** of every event.
+right as their figures, each under a health bar and beside three clocks for
+its map ability, fight ability and ultimate (hover a bar to slide it out with
+the name and the rest; rivals out of sight are greyed and show only what was
+last seen), the board in the middle, the hand along the bottom in every
+phase, and mana and the initiative timeline bottom right. HP, DMG, RES and SPD
+are drawn as a heart, sword, shield and boot everywhere.
+
+Under your cast sits the **inspect panel**: it shows whatever the pointer is
+on (a card at full size, a hero's three abilities, a tower's or camp's
+stats), else what you clicked to pin there, else the selected hero. A card
+there calls its hero out on the board and brackets what it could land on;
+cards nobody could play as things stand (their hero down, nothing in reach)
+lie veiled in the hand. Hold **Ctrl** over a card for its full rules.
+
+When a fight breaks out the camera dives into its hex while the figures stop
+growing at three times their size, and a solo match pauses until you press
+**space** (**z** turns the dive off). Hotkeys hide behind the **?** in the
+bottom-left corner, next to a debug **log** of every event.
 
 ## Deploying
 

@@ -4,6 +4,7 @@ import { CELLS, CORE, JUNGLE_HALVES, LANES, N_CELLS, NEIGHBOURS, STRUCTURE_SITES
 import { CAMP_IDS, CARDS_KEPT, FIGHT_EVERY, STAPLES, WAVE_SIZE, XP_UNIT, buildDeck, campDef, lineups, type CardId, type HeroId } from './content.ts';
 import { awardXp, kill, maxHp, stats } from './hero.ts';
 import { runMatch } from './match.ts';
+import { cardReach } from './reach.ts';
 import { nextU32, randInt, seedRng } from './rng.ts';
 import { advance, createMatch, hashState, step } from './sim.ts';
 import type { Command, GameEvent, MatchState, Target } from './types.ts';
@@ -263,6 +264,25 @@ describe('fight phase rules', () => {
   };
   const mid = LANES[1][4]!;
 
+  it('forecasts who can play a card and what it reaches', () => {
+    const s = plan();
+    const next = NEIGHBOURS[mid]!.find((n) => n >= 0)!;
+    const far = NEIGHBOURS[next]!.find((n) => n >= 0 && distance(n, mid) === 2)!;
+    // Scrimshander (uid 4) stands with the Duchess (uid 5), so Gnomon's side sees her.
+    at(s, { 0: mid, 4: next, 5: next });
+    expect(cardReach(viewFor(s, 0), 0, 'highNoon')).toMatchObject({ sources: [0], heroes: [5] });
+    // Vespertine waits at base, so nobody may play her Out of the Dark.
+    expect(cardReach(viewFor(s, 0), 0, 'outOfTheDark').sources).toEqual([]);
+    // A staple: whichever heroes have an enemy in reach.
+    expect(cardReach(viewFor(s, 0), 0, 'skirmish').sources).toEqual([0, 4]);
+    at(s, { 0: mid, 4: far, 5: far });
+    expect(cardReach(viewFor(s, 0), 0, 'highNoon').sources).toEqual([]);
+    // Bound cards wait on their hero being alive; Rewind alone does not.
+    s.heroes[0]!.respawnAt = s.mapTick + 5;
+    expect(cardReach(viewFor(s, 0), 0, 'hourHand').sources).toEqual([]);
+    expect(cardReach(viewFor(s, 0), 0, 'rewind').sources).toEqual([0]);
+  });
+
   it('merges same-initiative engages that share a hero, adding their lengths', () => {
     const s = plan();
     at(s, { 0: mid, 5: mid });
@@ -318,6 +338,9 @@ describe('fight phase rules', () => {
       { type: 'play', side: 1, handIndex: 0, source: 5, target: { kind: 'hero', uid: 4 } },
       { type: 'commit', side: 0, discard: [] }, { type: 'commit', side: 1, discard: [] },
     ]);
+    // Tactics come before engages: Press the Attack waits on its hero for Snuff's fight.
+    advance(s, []);
+    expect(s.heroes[4]!.fx.armed).toHaveLength(1);
     advance(s, []);
     expect(s.phase).toBe('clash');
     expect(s.heroes[4]!.fx.surgePct).toBe(20);

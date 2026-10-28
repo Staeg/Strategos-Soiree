@@ -51,8 +51,11 @@ These fill gaps in the match design. They are the bits the engine and the
 roster both depend on, so they are worth agreeing on early.
 
 - **Initiative** runs 0 to 9 and resolves ascending: 0 first, 9 last. Equal
-  initiative is simultaneous. Rough bands: 0–2 setup and information, 3–4
-  protection and tricks, 5–6 engages, 7–9 follow-ups and aftermath.
+  initiative is simultaneous. Rough bands: 0–1 setup and information, 2–4
+  protection, tricks and the Tactics that shape fights, 5–8 engages, 7–9
+  follow-ups and aftermath. Tactics sit before the engages so they land on
+  the fights they were played for; Out of the Dark (2) is the one early
+  engage, Vespertine's ambush.
 - **Engage (reach R, length L)**: start an engagement between this hero and a
   visible enemy hero within R hexes. Any other heroes on either hex are pulled
   in. L is the base fight-tick count (average 50 across the roster).
@@ -166,8 +169,8 @@ ultimate to keep her standing.
 
 | Card | Cost | Init | Keywords | Effect |
 |---|---|---|---|---|
-| Snuff | 3 | 4 | Engage (1, 30) | A short, early, brutal fight. |
-| Hot Wax | 2 | 6 | Tactic | Her target has its SPD halved for the first 20 ticks. |
+| Snuff | 3 | 5 | Engage (1, 30) | A short, early, brutal fight. |
+| Hot Wax | 2 | 3 | Tactic | Her target has its SPD halved for the first 20 ticks. |
 | Rekindle | 1 | 1 | — | Heal 25% max HP. |
 
 ### Gnomon
@@ -288,7 +291,7 @@ know where.
 |---|---|---|---|---|
 | Out of the Dark | 2 | 2 | Engage (1, 25) | Very early, very short. |
 | Star Pin | 1 | 4 | Tactic | In her next engagement, all allies attack a chosen enemy for the first 15 ticks. |
-| Fade | 1 | 7 | Tactic | Vespertine leaves her next engagement after its 10th tick and returns to the nearest jungle hex. |
+| Fade | 1 | 4 | Tactic | Vespertine leaves her next engagement after its 10th tick and returns to the nearest jungle hex. |
 
 ### Carrion Abacus
 `HP 850 · DMG 140 · RES 10 · SPD 14`
@@ -381,8 +384,8 @@ themselves.
 
 | Card | Cost | Init | Keywords | Effect |
 |---|---|---|---|---|
-| Lure | 2 | 4 | Engage (2, 50) | Fought on his hex. |
-| Dust of Wings | 1 | 5 | Tactic | In his next engagement, every enemy has −3 SPD for the first 20 ticks. |
+| Lure | 2 | 6 | Engage (2, 50) | Fought on his hex. |
+| Dust of Wings | 1 | 3 | Tactic | In his next engagement, every enemy has −3 SPD for the first 20 ticks. |
 | Lamp Season | 2 | 2 | — | Allied minions in his lane hit twice as often next map phase. |
 
 ### Lacuna
@@ -544,7 +547,7 @@ the Masterwork.
 | Card | Cost | Init | Keywords | Effect |
 |---|---|---|---|---|
 | Kill Line | 3 | 8 | Engage (1, 40) | The last engage of the phase. |
-| Bone Needle | 1 | 6 | Tactic | Her first attack in her next engagement deals 200%. |
+| Bone Needle | 1 | 2 | Tactic | Her first attack in her next engagement deals 200%. |
 | Ivory Ward | 2 | 2 | — | Enemy Engage cards cannot target her this phase. |
 
 ### The Twinned
@@ -610,8 +613,6 @@ picks which allied hero plays each one.
    ultimates are for?
 2. **Seeing the rival's hand.** Orrery's Ephemeris reveals cards the opponent
    draws. Fun read, or too much against the blind, simultaneous commit?
-3. **Tactic timing.** Now that a Tactic waits for its hero's next engagement,
-   a Tactic only helps fights at its own initiative or later. A few cards sit
-   after the engages they were meant to support (Hot Wax at 6 after Snuff at
-   4, Bone Needle at 6 after nothing of hers before Kill Line at 8). Retune
-   their initiatives, or leave the sequencing puzzle to the player?
+3. ~~**Tactic timing.**~~ Settled: every Tactic now sits at initiative 2–4
+   and every engage but Out of the Dark at 5–8, so a Tactic lands on the
+   fight it was played for.

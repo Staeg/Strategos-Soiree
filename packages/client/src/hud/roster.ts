@@ -1,13 +1,13 @@
 import Phaser from 'phaser';
 import {
-  XP_UNIT, foe, heroDef, maxHp, stats,
+  FIGHT_EVERY, XP_UNIT, foe, heroDef, maxHp, stats,
   type Hero, type MatchView, type Side,
 } from '@soiree/sim';
 import { heroKey, heroOriginX } from '../art/forge.ts';
 import { SIGNATURES } from '../art/heroes.ts';
-import { BLOOD, CREAM, DUSK, GOLD, INK, MAUVE, NIGHT, PLUM, TEAM, VIOLET } from '../art/palette.ts';
+import { AMBER, BLOOD, CREAM, DUSK, GOLD, INK, LEAF, MAUVE, NIGHT, PLUM, TEAM, VIOLET } from '../art/palette.ts';
 import { CHARGE_NAME } from '../rules.ts';
-import { centred, LINE_H, say, text, W, wrap } from '../ui.ts';
+import { centred, LINE_H, say, text, W } from '../ui.ts';
 
 /** Collapsed and popped-out bar widths, the row pitch, and where the first row sits. */
 const NARROW = 108;
@@ -17,8 +17,9 @@ const PITCH = 27;
 const TOP = 22;
 /** Popping out takes this long, in ms. */
 const POP_MS = 110;
-/** Health bar length. */
-const BAR = 56;
+/** Clock faces: radius, and the spacing between the three. */
+const DIAL_R = 7;
+const DIAL_STEP = 19;
 
 interface Row {
   uid: number;
@@ -27,27 +28,52 @@ interface Row {
   open: number;
   g: Phaser.GameObjects.Graphics;
   icon: Phaser.GameObjects.Image;
-  clock: Phaser.GameObjects.BitmapText;
+  /** The map ability's, the fight ability's and the ultimate's clocks. */
+  clocks: Phaser.GameObjects.BitmapText[];
   unknown: Phaser.GameObjects.BitmapText;
   lines: Phaser.GameObjects.BitmapText[];
   stance: Phaser.GameObjects.BitmapText;
 }
 
-/** What one side last saw of a rival hero, and when. */
-interface Sighting { hero: Hero; tick: number }
+/** One of a hero's three abilities as a clock: what is left to wait (0: ready) and how far along it is. */
+export interface Dial { left: number; part: number; tint: number }
+
+/** Each ability's colour, on the clocks and in the inspect panel alike. */
+export const ABILITY_TINT = { map: LEAF, fight: AMBER, ult: VIOLET } as const;
+
+/**
+ * Where a hero's abilities stand: the map ability in map ticks, the fight
+ * ability in the hero's own turns, the ultimate in fight phases or charges.
+ */
+export function dials(v: MatchView, h: Hero): [Dial, Dial, Dial] {
+  const def = heroDef(h.id);
+  // An aura is always on unless Unwrite has silenced it; then it waits out the phase.
+  const mapWait = Math.max(0, h.mapReadyAt - v.mapTick);
+  const mapSpan = def.map.every || FIGHT_EVERY;
+  const map = { left: mapWait, part: 1 - Math.min(mapWait, mapSpan) / mapSpan, tint: ABILITY_TINT.map };
+  // The fight ability comes on turns every, 2*every...: count the turns still to pass before it.
+  const every = def.fight.every;
+  const wait = h.fx.opening ? 0 : (every - ((h.fx.turns + 1) % every)) % every;
+  const fight = { left: wait, part: 1 - wait / every, tint: ABILITY_TINT.fight };
+  const u = def.ult;
+  const ult = u.kind === 'ascension'
+    ? { left: h.ascended ? 0 : u.charge - h.charge, part: h.ascended ? 1 : h.charge / u.charge, tint: ABILITY_TINT.ult }
+    : { left: Math.max(0, h.ultReadyAt - v.fightPhase), part: 1 - Math.max(0, h.ultReadyAt - v.fightPhase) / u.cooldown, tint: ABILITY_TINT.ult };
+  return [map, fight, ult];
+}
 
 /**
  * The two casts down the sides of the screen: yours on the left, the
- * rival's on the right. At rest a bar shows the hero's figure, a health bar
- * and the ultimate's clock; hovered, it slides out towards the board with
- * the name and the rest.
+ * rival's on the right. At rest a bar shows the hero's figure under a
+ * health bar, as on the board, and a clock for each of its three
+ * abilities; hovered, it slides out towards the board with the name and
+ * the rest.
  * Rivals out of sight are greyed and show only what was last seen of them.
  */
 export class Roster {
   private rows: Row[] = [];
-  private seen = new Map<number, Sighting>();
-  private detail: Phaser.GameObjects.Container | null = null;
-  private detailKey = '';
+  /** What this side last saw of each rival hero. */
+  private seen = new Map<number, Hero>();
   hovered = -1;
   /** A hero to call out, such as the owner of the card under the pointer, or -1. */
   highlight = -1;
@@ -70,10 +96,10 @@ export class Roster {
     return -1;
   }
 
-  update(v: MatchView, selected: number, ctrl: boolean, pointer: { x: number; y: number }, dt: number, time: number): void {
+  update(v: MatchView, selected: number, pointer: { x: number; y: number }, dt: number, time: number): void {
     if (!this.rows.length) this.build(v);
     for (const h of v.heroes) {
-      if (h.side !== this.me && h.cell >= 0 && h.respawnAt < 0) this.seen.set(h.uid, { hero: structuredClone(h), tick: v.mapTick });
+      if (h.side !== this.me && h.cell >= 0 && h.respawnAt < 0) this.seen.set(h.uid, structuredClone(h));
     }
     this.hovered = this.heroAt(pointer.x, pointer.y);
     for (const side of [this.me, foe(this.me)]) {
@@ -83,7 +109,6 @@ export class Roster {
         this.draw(v, r, i, selected, time);
       });
     }
-    this.drawDetail(v, ctrl);
   }
 
   private build(v: MatchView): void {
@@ -93,7 +118,7 @@ export class Roster {
         uid: h.uid, side: h.side, open: 0,
         g: s.add.graphics().setDepth(1100),
         icon: s.add.image(0, 0, heroKey(h.id, h.side), '0').setOrigin(heroOriginX(h.side), 1).setDepth(1101),
-        clock: centred(s, 0, 0, '', CREAM).setDepth(1102),
+        clocks: [0, 1, 2].map(() => centred(s, 0, 0, '', CREAM).setDepth(1102)),
         unknown: centred(s, 0, 0, '?', CREAM).setDepth(1102),
         lines: [0, 1, 2].map(() => text(s, 0, 0, '', MAUVE).setDepth(1101)),
         stance: text(s, 0, 0, '', CREAM).setDepth(1101),
@@ -103,18 +128,17 @@ export class Roster {
   }
 
   /** The rival as last seen, or as it must have started if never seen; your own heroes are always known. */
-  private known(v: MatchView, h: Hero): { hero: Hero; fresh: boolean; tick: number } {
-    if (h.side === this.me || h.respawnAt >= 0) return { hero: h, fresh: true, tick: v.mapTick };
-    if (h.cell >= 0) return { hero: h, fresh: true, tick: v.mapTick };
+  known(h: Hero): { hero: Hero; fresh: boolean; ever: boolean } {
+    if (h.side === this.me || h.respawnAt >= 0 || h.cell >= 0) return { hero: h, fresh: true, ever: true };
     const last = this.seen.get(h.uid);
-    if (last) return { hero: last.hero, fresh: false, tick: last.tick };
+    if (last) return { hero: last, fresh: false, ever: true };
     const start = { ...structuredClone(h), xp: 0, charge: 0, grown: { dmg: 0, spd: 0 }, boons: [] };
-    return { hero: { ...start, hp: maxHp(start) }, fresh: false, tick: -1 };
+    return { hero: { ...start, hp: maxHp(start) }, fresh: false, ever: false };
   }
 
   private draw(v: MatchView, r: Row, index: number, selected: number, time: number): void {
     const live = v.heroes[r.uid]!;
-    const { hero: h, fresh, tick } = this.known(v, live);
+    const { hero: h, fresh, ever } = this.known(live);
     const def = heroDef(h.id);
     const mine = r.side === this.me;
     const box = this.rect(r, index);
@@ -137,28 +161,29 @@ export class Roster {
       g.lineStyle(1, GOLD, pulse * 0.4).strokeRect(box.x - 1.5, box.y - 1.5, box.width + 3, box.height + 3);
     }
 
-    // The figure, health and the ult clock live in the hanging end, which never moves.
+    // The figure under its health bar, and the clocks, live in the hanging end, which never moves.
     const figure = mine ? near + 6 : near - 6 - 20;
-    r.icon.setPosition(figure + (mine ? 8 : 12), box.y + 20).setAlpha(dim ? 0.45 : 1).setTint(dim ? 0x9a94a8 : 0xffffff);
-    const inner = mine ? figure + 22 : figure - 2 - BAR;
+    const [fx, fy] = [figure + (mine ? 8 : 12), box.y + 21];
+    r.icon.setPosition(fx, fy).setAlpha(dim ? 0.45 : 1).setTint(dim ? 0x9a94a8 : 0xffffff);
+    // The same bar the hero wears on the board, at the same size and place.
     const max = maxHp(h);
     const hp = dead ? 0 : Math.max(0, h.hp);
-    const barY = box.y + 9;
-    g.fillStyle(INK).fillRect(inner - 1, barY - 1, BAR + 2, 8);
-    g.fillStyle(NIGHT).fillRect(inner, barY, BAR, 6);
-    const fill = Math.ceil((BAR * hp) / max);
-    const tint = dim ? 0x6b6577 : h.retreating ? GOLD : TEAM[h.side].main;
-    g.fillStyle(tint).fillRect(mine ? inner : inner + BAR - fill, barY, fill, 6);
-    g.fillStyle(dim ? 0x8d8799 : TEAM[h.side].light).fillRect(mine ? inner : inner + BAR - fill, barY, fill, 1);
-    r.unknown.setVisible(!fresh && !dead).setPosition(inner + BAR / 2 + 1, barY + 3);
-    if (!fresh && !dead) g.fillStyle(INK, 0.8).fillRect(inner + BAR / 2 - 3, barY - 1, 7, 8);
+    const [bx, by] = [fx - 5, fy - 18];
+    g.fillStyle(INK).fillRect(bx, by, 10, 3);
+    if (hp > 0) g.fillStyle(dim ? 0x6b6577 : h.retreating ? GOLD : TEAM[h.side].main).fillRect(bx + 1, by + 1, Math.max(1, Math.ceil((8 * hp) / max)), 1);
+    if (!dim && h.stance === 'aggressive') g.fillStyle(BLOOD).fillRect(bx + 10, by, 2, 3);
+    r.unknown.setVisible(!fresh && !dead).setPosition(fx + (mine ? 12 : -12), by + 2);
 
-    this.drawClock(v, r, h, mine ? near + NARROW - 12 : near - NARROW + 12, box.y + 12, dim, time);
+    // The ultimate's clock nearest the board, the map ability's nearest the edge.
+    dials(v, h).forEach((d, i) => {
+      const cx = mine ? near + NARROW - 12 - (2 - i) * DIAL_STEP : near - NARROW + 12 + (2 - i) * DIAL_STEP;
+      dial(g, r.clocks[i]!, cx, box.y + 12, d, dim, time);
+    });
 
     // The pop-out, revealed once the bar has slid all the way.
     const out = r.open >= 1;
     const px = mine ? near + NARROW + 2 : near - WIDE + 4;
-    const lines = out ? [def.name, ...this.details(v, h, live, fresh, tick)] : ['', '', ''];
+    const lines = out ? [def.name, ...this.details(v, h, live, fresh, ever)] : ['', '', ''];
     r.lines.forEach((t, i) => say(t, lines[i]!).setPosition(px, box.y + 3 + i * LINE_H).setVisible(out)
       .setTint(i === 0 ? (dim ? MAUVE : GOLD) : MAUVE));
     const stance = dead || !fresh ? '' : h.stance;
@@ -167,88 +192,41 @@ export class Roster {
     if (out) g.fillStyle(DUSK, 0.6).fillRect(mine ? near + NARROW - 1 : near - NARROW, box.y + 3, 1, box.height - 6);
   }
 
-  /** A little clock face: the ultimate's cooldown as a filling wedge and the phases still to wait. */
-  private drawClock(v: MatchView, r: Row, h: Hero, cx: number, cy: number, dim: boolean, time: number): void {
-    const def = heroDef(h.id);
-    const ult = def.ult;
-    const g = r.g;
-    let left: number, part: number;
-    if (ult.kind === 'ascension') {
-      left = h.ascended ? 0 : ult.charge - h.charge;
-      part = h.ascended ? 1 : h.charge / ult.charge;
-    } else {
-      left = Math.max(0, h.ultReadyAt - v.fightPhase);
-      part = 1 - left / ult.cooldown;
-    }
-    const R = 7;
-    g.fillStyle(INK).fillCircle(cx, cy, R + 1);
-    g.fillStyle(NIGHT).fillCircle(cx, cy, R);
-    g.lineStyle(1, DUSK).strokeCircle(cx, cy, R);
-    if (left <= 0) {
-      const pulse = dim ? 0.5 : 0.75 + 0.25 * Math.sin(time / 200);
-      g.fillStyle(VIOLET, pulse).fillCircle(cx, cy, R);
-      g.fillStyle(0xffffff, pulse).fillRect(cx - 3, cy, 7, 1).fillRect(cx, cy - 3, 1, 7);
-      say(r.clock, '');
-      return;
-    }
-    if (part > 0) {
-      g.fillStyle(VIOLET, dim ? 0.3 : 0.55).slice(cx, cy, R, -Math.PI / 2, -Math.PI / 2 + part * Math.PI * 2, false).fillPath();
-    }
-    g.fillStyle(MAUVE).fillRect(cx, cy - R, 1, 2);
-    say(r.clock, String(left)).setPosition(cx + 1, cy + 1).setTint(dim ? MAUVE : CREAM);
-  }
-
-  /** The pop-out lines under the name: role, growth and stats, then what is particular to this hero. */
-  private details(v: MatchView, h: Hero, live: Hero, fresh: boolean, tick: number): string[] {
+  /** The pop-out lines under the name: growth and stats, then what is particular to this hero. */
+  private details(v: MatchView, h: Hero, live: Hero, fresh: boolean, ever: boolean): string[] {
     const st = stats(h);
     const xp = Math.floor(h.xp / XP_UNIT);
     const fight = `dmg${st.dmg} res${st.res} spd${st.spd}`;
     const hp = `hp${Math.max(0, h.hp)}/${maxHp(h)}`;
-    if (live.respawnAt >= 0) return [`${h.role} xp ${xp}  down: back in ${live.respawnAt - v.mapTick}`, special(v, h).join('  ')];
-    if (!fresh) {
-      return tick < 0
-        ? [`${h.role}  never seen`, `hp full at the start ${fight}`]
-        : [`${h.role}  last seen tick ${tick}`, `then: ${hp} ${fight} xp ${xp}`];
-    }
+    if (live.respawnAt >= 0) return [`xp ${xp}  down: back in ${live.respawnAt - v.mapTick}`, special(v, h).join('  ')];
+    if (!fresh) return ever ? [`${hp} ${fight} xp ${xp}`, ''] : ['never seen', `hp full at the start ${fight}`];
     const doing = h.retreating ? 'retreating' : h.roam >= 0 ? 'roaming' : h.fx.engagement >= 0 ? 'fighting' : '';
     return [
-      `${h.role} xp ${xp} ${hp} ${fight}`,
+      `xp ${xp} ${hp} ${fight}`,
       [doing, ...special(v, h)].filter(Boolean).join('  '),
     ];
-  }
-
-  /** Ctrl over a bar: the hero's three abilities, written out, under the bar. */
-  private drawDetail(v: MatchView, ctrl: boolean): void {
-    const r = this.rows.find((x) => x.uid === this.hovered);
-    const key = ctrl && r && r.open >= 1 ? `${r.uid}` : '';
-    if (key === this.detailKey) return;
-    this.detailKey = key;
-    this.detail?.destroy();
-    this.detail = null;
-    if (!key || !r) return;
-    const h = v.heroes[r.uid]!;
-    const def = heroDef(h.id);
-    const index = this.rows.filter((x) => x.side === r.side).indexOf(r);
-    const box = this.rect(r, index);
-    const cols = Math.floor((WIDE - 10) / 4);
-    const ult = def.ult;
-    const ultTail = ult.kind === 'ascension' ? 'one time' : `cooldown ${ult.cooldown} fight phases`;
-    const paras: [string, number][] = [
-      [`map: ${def.map.name}${def.map.every ? ` (every ${def.map.every} ticks)` : ' (aura)'}`, GOLD], [def.map.text, CREAM],
-      [`fight: ${def.fight.name} (every ${def.fight.every} turns)`, GOLD], [def.fight.text, CREAM],
-      [`ultimate, ${ult.kind}: ${ult.name} (${ultTail})`, VIOLET], [ult.text, CREAM],
-    ];
-    const lines = paras.flatMap(([p, tint]) => wrap(p, cols).map((l) => [l, tint] as const));
-    const height = lines.length * LINE_H + 6;
-    const y = Math.min(box.bottom + 2, 268 - height);
-    const c = this.scene.add.container(box.x, y).setDepth(1200);
-    c.add(this.scene.add.graphics().fillStyle(INK, 0.95).fillRect(0, 0, WIDE, height).lineStyle(1, DUSK).strokeRect(0.5, 0.5, WIDE - 1, height - 1));
-    lines.forEach(([l, tint], i) => c.add(text(this.scene, 5, 4 + i * LINE_H, l, tint)));
-    this.detail = c;
   }
 }
 
 const ease = (t: number) => 1 - (1 - t) * (1 - t);
+
+/** A little clock face: the wait as a filling wedge and the count still to go, lit when ready. */
+function dial(g: Phaser.GameObjects.Graphics, label: Phaser.GameObjects.BitmapText, cx: number, cy: number, d: Dial, dim: boolean, time: number): void {
+  const R = DIAL_R;
+  g.fillStyle(INK).fillCircle(cx, cy, R + 1);
+  g.fillStyle(NIGHT).fillCircle(cx, cy, R);
+  g.lineStyle(1, DUSK).strokeCircle(cx, cy, R);
+  if (d.left <= 0) {
+    const pulse = dim ? 0.5 : 0.75 + 0.25 * Math.sin(time / 200);
+    g.fillStyle(d.tint, pulse).fillCircle(cx, cy, R);
+    g.fillStyle(0xffffff, pulse).fillRect(cx - 3, cy, 7, 1).fillRect(cx, cy - 3, 1, 7);
+    say(label, '');
+    return;
+  }
+  if (d.part > 0) g.fillStyle(d.tint, dim ? 0.3 : 0.55).slice(cx, cy, R, -Math.PI / 2, -Math.PI / 2 + d.part * Math.PI * 2, false).fillPath();
+  g.fillStyle(MAUVE).fillRect(cx, cy - R, 1, 2);
+  say(label, String(d.left)).setPosition(cx + 1, cy + 1).setTint(dim ? MAUVE : CREAM);
+}
 
 /** Charges, growth, the map ability's clock and any boons: whatever only this hero has. */
 function special(v: MatchView, h: Hero): string[] {
