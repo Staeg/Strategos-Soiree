@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { STAT_ICON } from './art/font.ts';
 import { CREAM, DUSK, GOLD, INK, MAUVE, NIGHT, PLUM } from './art/palette.ts';
 
 export const W = 640;
@@ -37,8 +38,38 @@ export function clip(lines: string[], max: number, cols: number): string[] {
   return kept;
 }
 
+const STAT_WORD = /\b(HP|DMG|RES|SPD)(?=\b|\d)/gi;
+const ICON_TINT: Record<string, number> = {
+  [STAT_ICON.hp]: 0xe8505c, [STAT_ICON.dmg]: 0xd4dbe6, [STAT_ICON.res]: 0xe8c170, [STAT_ICON.spd]: 0xc9925a,
+};
+
+/** Upper-cased, with every HP, DMG, RES and SPD swapped for its icon. */
+export function glyphs(value: string): string {
+  return value.replace(STAT_WORD, (w) => STAT_ICON[w.toLowerCase() as keyof typeof STAT_ICON]).toUpperCase();
+}
+
+/**
+ * Sets pixel text, icons and all. On dark grounds (`colourIcons`) each icon
+ * keeps its own colour whatever the line's tint; on cards they take the ink.
+ */
+export function say(t: Phaser.GameObjects.BitmapText, value: string, colourIcons = true): Phaser.GameObjects.BitmapText {
+  const shown = glyphs(value);
+  if (shown === t.text) return t;
+  t.setText(shown);
+  if (!colourIcons) return t;
+  t.setCharacterTint(0, -1, false);
+  let i = 0;
+  for (const ch of shown) {
+    if (ch === '\n') continue;
+    const tint = ICON_TINT[ch];
+    if (tint !== undefined) t.setCharacterTint(i, 1, true, tint);
+    i++;
+  }
+  return t;
+}
+
 export function text(scene: Phaser.Scene, x: number, y: number, value: string, tint = CREAM, scale = 1) {
-  return scene.add.bitmapText(x, y, 'pixel', value.toUpperCase()).setTint(tint).setScale(scale);
+  return say(scene.add.bitmapText(x, y, 'pixel', '').setTint(tint).setScale(scale), value);
 }
 
 export function centred(scene: Phaser.Scene, x: number, y: number, value: string, tint = CREAM, scale = 1) {

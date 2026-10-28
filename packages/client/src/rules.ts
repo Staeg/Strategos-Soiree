@@ -12,11 +12,11 @@ export function cardRules(id: CardId): string[] {
   const def = cardDef(id);
   const owner = CARD_OWNER[id];
   const hero = owner ? heroDef(owner) : undefined;
-  const who = hero ? shortName(hero) : 'the hero';
+  const who = hero ? shortName(hero) : 'the target hero';
   const Who = cap(who);
   const out = [
     `${def.cost} mana. Initiative ${def.initiative}: resolves after every lower initiative, at the same time as equal ones.`,
-    hero ? `Played by ${hero.name}.` : 'Played by whichever allied hero you pick.',
+    hero ? `Played by ${hero.name}.` : 'Target hero: whichever allied hero you pick to play it.',
     AIM[def.aim],
     ...def.effect.map((op) => cap(opRules(op, who, Who, owner))),
   ];
@@ -58,7 +58,7 @@ function opRules(op: CardOp, who: string, Who: string, owner: HeroId | undefined
         ? 'Only the two of them fight, and nobody may join.'
         : 'Every hero on either cell is pulled in.';
       return `${who} starts a fight with ${range} (an aggressive target counts as a cell closer). ${crowd} `
-        + `It is fought on ${op.pull ? `${who}'s own cell` : "the target's cell"} and lasts ${op.length} fight ticks.`;
+        + `It is fought on ${op.pull ? `${who}'s own cell` : "the enemy's cell"} and lasts ${op.length} fight ticks.`;
     }
     case 'join':
       return `${who} enters the next allied fight within ${cells(op.reach)} this phase (1 less reach while aggressive).`;
@@ -85,7 +85,7 @@ function opRules(op: CardOp, who: string, Who: string, owner: HeroId | undefined
     case 'opening':
       return `${who}'s first turn in that fight is ${owner ? heroDef(owner).fight.name : 'its fight ability'}.`;
     case 'procession':
-      return `up to ${op.n} allied lane minions on or next to ${who} fight beside ${who === 'the hero' ? 'it' : who} ${next}.`;
+      return `up to ${op.n} allied lane minions on or next to ${who} fight beside ${who} ${next}.`;
     case 'evade':
       return op.reach === undefined
         ? `engage cards with a later initiative than this cannot target ${who}.`
@@ -107,7 +107,7 @@ function opRules(op: CardOp, who: string, Who: string, owner: HeroId | undefined
     case 'rewind':
       return `${who}'s HP and position go back to what they were when this fight phase began. Works even if ${who} died this phase, but not if ${who} was already dead when it began.`;
     case 'shadowStep':
-      return `${who} steps into the cell his Long Shadow covers: one lane cell further along his lane, towards the enemy core. Fizzles if he is not standing on a lane, or the lane ends there.`;
+      return `${who} steps into the cell the Long Shadow covers: one lane cell further along ${who}'s lane, towards the enemy core. Fizzles if ${who} is not standing on a lane, or the lane ends there.`;
     case 'nightfall':
       return 'until the next fight phase, the enemy sees only the cells its own heroes, minions and structures stand on: no wards, no tower sight.';
     case 'cancel':

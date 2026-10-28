@@ -214,6 +214,7 @@ export class Match extends Phaser.Scene {
     this.logCells = this.log.hover(p.x, p.y);
     this.frame(time, delta);
     this.drawFog();
+    this.roster.highlight = this.cardOwner();
     this.drawUnits(time);
     this.flourishes.update();
     this.drawTop();
@@ -264,6 +265,14 @@ export class Match extends Phaser.Scene {
       .filter(([, d]) => d < 12)
       .sort((a, b) => a[1] - b[1])
       .map(([h]) => h);
+  }
+
+  /** Your hero whose own card is under the pointer, in the hand or on the timeline, or -1. */
+  private cardOwner(): number {
+    const card = this.handHover >= 0 ? this.v.sides[this.me].hand[this.handHover]
+      : this.timelineHover?.side === this.me ? this.timelineHover.card : undefined;
+    const owner = card && CARD_OWNER[card];
+    return owner ? this.v.heroes.find((h) => h.side === this.me && h.id === owner)?.uid ?? -1 : -1;
   }
 
   /** A click on nothing interactive: the hand, then the hero bars, then the board. */
@@ -499,6 +508,12 @@ export class Match extends Phaser.Scene {
       bars.fillStyle(INK).fillRect(bx, by, 10, 3);
       bars.fillStyle(h.retreating ? GOLD : TEAM[h.side].main).fillRect(bx + 1, by + 1, Math.max(1, Math.ceil((8 * h.hp) / max)), 1);
       if (h.stance === 'aggressive') bars.fillStyle(BLOOD).fillRect(bx + 10, by, 2, 3);
+      // The owner of the card under the pointer is called out in gold.
+      if (h.uid === this.roster.highlight) {
+        const pulse = 0.6 + 0.4 * Math.sin(time / 120);
+        bars.lineStyle(1, GOLD, pulse).strokeRect(Math.round(x) - 8, Math.round(y) - 15, 16, 17);
+        bars.lineStyle(1, GOLD, pulse * 0.6).strokePoints(hexPoints(h.cell, 1), true);
+      }
       // A hero whose bar is hovered or selected is ringed on the board too.
       if (h.uid === this.selected || h.uid === this.roster.hovered) {
         const ring = h.uid === this.selected ? 0.6 + 0.4 * Math.sin(time / 150) : 0.5;
