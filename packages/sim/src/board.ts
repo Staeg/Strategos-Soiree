@@ -126,13 +126,18 @@ export const territory = (cell: number): Side | null => {
 /** Everything off the lanes is jungle. */
 export const JUNGLE: readonly number[] = CELLS.flatMap((_, i) => (isLane(i) ? [] : [i]));
 
+/** The cell turned half a circle about the centre: what side 0 owns there, side 1 owns here. */
+export const opposite = (i: number): number => cellAt(-CELLS[i]!.q, -CELLS[i]!.r);
+
 /**
- * Two camps per side in each half of the jungle, placed by hand on side 0's
- * half and mirrored for side 1.
+ * Each side's jungle, split by mid into the half towards top lane and the
+ * half towards bot. Turning the board about its centre swaps the sides and
+ * top with bot, so side 1's top half is side 0's bot half turned round.
  */
-export const CAMP_SITES: readonly { cell: number; owner: Side }[] = (() => {
-  const own = [cellAt(-3, 2), cellAt(-2, 0), cellAt(-1, 3), cellAt(0, 1)];
-  return [...own.map((cell) => ({ cell, owner: 0 as Side })), ...own.map((cell) => ({ cell: mirror(cell), owner: 1 as Side }))];
+export const JUNGLE_HALVES: Record<Side, readonly [readonly number[], readonly number[]]> = (() => {
+  const half = (side: Side, top: boolean) =>
+    JUNGLE.filter((c) => territory(c) === side && (top ? CELLS[c]!.q + CELLS[c]!.r < 0 : CELLS[c]!.q + CELLS[c]!.r > 0));
+  return { 0: [half(0, true), half(0, false)], 1: [half(1, true), half(1, false)] };
 })();
 
 /**

@@ -72,6 +72,20 @@ export function clearAutosave(): void {
 let live: LocalSession | null = null;
 export function watch(s: LocalSession | null): void { live = s; }
 
+/**
+ * Readies a match to be played: watched for reports, auto-saved as the ball
+ * begins and as every fight phase opens; a finished match leaves nothing to continue.
+ */
+export function autosaving(s: LocalSession): LocalSession {
+  watch(s);
+  autosave(s);
+  s.onPhase = (phase) => {
+    if (phase === 'plan') autosave(s);
+    if (phase === 'over') clearAutosave();
+  };
+  return s;
+}
+
 /** What a bug report needs: the error, if any, and the whole match so far, replayable. */
 export function report(error?: unknown): Report {
   const err = error instanceof Error ? { message: error.message, ...(error.stack ? { stack: error.stack } : {}) }

@@ -14,12 +14,9 @@ export const MANA_PER_PHASE = 10;
 export const MANA_KEPT = 10;
 export const CARDS_KEPT = 5;
 
-/** Permille chance, per map tick, that a minion or creep strikes. */
+/** Permille chance, per map tick, that a minion strikes. */
 export const MINION_STRIKE = 100;
 export const MINION_DMG = 50;
-export const CREEP_DMG = 40;
-export const CAMP_SIZE = 4;
-export const CAMP_RESPAWN = 40;
 /** Damage a structure deals an enemy hero on its cell when no enemy minions shield them. */
 export const TOWER_DMG = 120;
 export const STRUCTURE_HP = { core: 3000, inner: 2000, outer: 1500 } as const;
@@ -44,7 +41,7 @@ export const XP_TOWER = 10;
 export const ORDERS_PER_PHASE = { stance: 1, roam: 1 } as const;
 
 export interface StanceDef {
-  /** Minions or creeps killed per map tick on the hero's cell. */
+  /** Minions killed per map tick on the hero's cell; against camps, DMG dealt in multiples of the hero's. */
   clear: number;
   /** Below this percent of max HP the hero walks home. */
   retreat: number;
@@ -59,6 +56,57 @@ export const STANCES: Record<Stance, StanceDef> = {
   passive: { clear: 1, retreat: 40, siege: 0 },
   aggressive: { clear: 2, retreat: 20, siege: 25 },
 };
+
+// ---- jungle camps -------------------------------------------------------------
+
+export interface CampDef {
+  name: string;
+  text: string;
+  /** Creeps in the camp; they die one after another, a hero's damage spilling over. */
+  creeps: number;
+  /** Per creep. Every creep strikes a hero on the camp once every `every` ticks it is fought, like clockwork. */
+  hp: number;
+  dmg: number;
+  res: number;
+  every: number;
+  /** XP per creep, shared between the heroes on the camp. */
+  xp: number;
+  /** Map ticks from the last creep's death until the camp stands again. */
+  respawn: number;
+}
+
+/**
+ * Five camps a side, one of each, placed at random every match (see
+ * `campLayout`). Tuned so a jungler who never leaves the jungle out-earns
+ * a solo laner by a little, must walk home once before finishing a first
+ * full clear, and never runs out of standing camps early on.
+ */
+export const CAMPS = {
+  wallflowers: {
+    name: 'Wallflowers', text: 'Six masked wallflowers that nip from every side, and wilt at a touch.',
+    creeps: 6, hp: 220, dmg: 22, res: 0, every: 3, xp: 7, respawn: 55,
+  },
+  cloakroom: {
+    name: 'Cloakroom', text: 'Four unclaimed coats walking the halls, buttoned up against the cold.',
+    creeps: 4, hp: 480, dmg: 35, res: 10, every: 5, xp: 11, respawn: 60,
+  },
+  topiary: {
+    name: 'Topiary Hounds', text: 'Two hedge-clipped hounds; blades blunt on their boxwood.',
+    creeps: 2, hp: 1000, dmg: 28, res: 60, every: 5, xp: 28, respawn: 65,
+  },
+  chandelier: {
+    name: 'Chandelier', text: 'A crystal chandelier that rarely falls, and falls hard.',
+    creeps: 1, hp: 1400, dmg: 175, res: 20, every: 10, xp: 50, respawn: 65,
+  },
+  wyrm: {
+    name: 'Punch-Bowl Wyrm', text: 'A wyrm coiled in the punch bowl: the most to chew through, the most to gain.',
+    creeps: 1, hp: 3300, dmg: 62, res: 30, every: 4, xp: 84, respawn: 80,
+  },
+} as const satisfies Record<string, CampDef>;
+
+export type CampId = keyof typeof CAMPS;
+export const CAMP_IDS = Object.keys(CAMPS) as CampId[];
+export const campDef = (id: CampId): CampDef => CAMPS[id];
 
 // ---- fight-phase rules -------------------------------------------------------
 
@@ -268,40 +316,40 @@ const B = 'Bound' as const;
 
 export const CARDS = {
   // Staples: one each per deck, played from whichever allied hero the player picks.
-  skirmish: card('Skirmish', 3, 5, ['Engage'], 'enemy', [{ op: 'engage', reach: 1, length: 50 }], 'The plain engage.'),
-  reinforce: card('Reinforce', 2, 6, ['Join'], 'none', [{ op: 'join', reach: 2 }], 'Join a nearby fight.'),
-  fallBack: card('Fall Back', 1, 2, [], 'none', [{ op: 'evade' }], 'Later engages cannot target this hero.'),
-  pressTheAttack: card('Press the Attack', 1, 4, ['Tactic'], 'none', [{ op: 'empower', who: 'engagement', dmgPct: 20, ticks: 15 }], 'Allies in its next fight: +20% DMG for 15 ticks.'),
-  secondWind: card('Second Wind', 2, 8, [], 'none', [{ op: 'heal', pct: 25 }], 'Heal 25%.'),
-  holdTheLine: card('Hold the Line', 2, 3, [], 'tower', [{ op: 'guardTower' }], 'A tower takes half damage until the next fight phase.'),
+  skirmish: card('Skirmish', 3, 5, ['Engage'], 'enemy', [{ op: 'engage', reach: 1, length: 50 }], 'Target hero engages an enemy hero within 1.'),
+  reinforce: card('Reinforce', 2, 6, ['Join'], 'none', [{ op: 'join', reach: 2 }], 'Target hero joins a nearby fight.'),
+  fallBack: card('Fall Back', 1, 2, [], 'none', [{ op: 'evade' }], 'Later engages cannot target the target hero.'),
+  pressTheAttack: card('Press the Attack', 1, 4, ['Tactic'], 'none', [{ op: 'empower', who: 'engagement', dmgPct: 20, ticks: 15 }], "In target hero's next fight, allies there +20% DMG for 15 ticks."),
+  secondWind: card('Second Wind', 2, 8, [], 'none', [{ op: 'heal', pct: 25 }], 'Target hero heals 25%.'),
+  holdTheLine: card('Hold the Line', 2, 3, [], 'tower', [{ op: 'guardTower' }], 'Target allied tower takes half damage until the next fight phase.'),
 
   // The Tallow Duchess
   snuff: card('Snuff', 3, 4, ['Engage', B], 'enemy', [{ op: 'engage', reach: 1, length: 30 }], 'Engage (1, 30).'),
-  hotWax: card('Hot Wax', 2, 6, ['Tactic', B], 'enemy', [{ op: 'slow', who: 'target', pct: 50, ticks: 20 }], 'In her next fight, the target has half SPD for 20 ticks.'),
-  rekindle: card('Rekindle', 1, 1, [B], 'none', [{ op: 'heal', pct: 25 }], 'Heal 25%.'),
+  hotWax: card('Hot Wax', 2, 6, ['Tactic', B], 'enemy', [{ op: 'slow', who: 'target', pct: 50, ticks: 20 }], "In the Duchess's next fight, the target has half SPD for 20 ticks."),
+  rekindle: card('Rekindle', 1, 1, [B], 'none', [{ op: 'heal', pct: 25 }], 'The Duchess heals 25%.'),
 
   // Gnomon
-  highNoon: card('High Noon', 2, 5, ['Engage', B], 'enemy', [{ op: 'engage', reach: 1, length: 50, duel: true }], 'Engage (1, 50), just the two of them; nobody may join.'),
-  hourHand: card('Hour Hand', 1, 2, ['Tactic', B], 'none', [{ op: 'quick' }], 'He acts on the first tick of his next fight.'),
-  shadowStep: card('Shadow Step', 2, 3, [B], 'none', [{ op: 'shadowStep' }], 'He steps one lane cell ahead, into his Long Shadow.'),
-  rewind: card('Rewind', 4, 9, [B, 'Ultimate'], 'none', [{ op: 'rewind' }], 'HP and place back to the start of the phase, even from death.'),
+  highNoon: card('High Noon', 2, 5, ['Engage', B], 'enemy', [{ op: 'engage', reach: 1, length: 50, duel: true }], 'Gnomon engages (1, 50) the target alone; nobody may join.'),
+  hourHand: card('Hour Hand', 1, 2, ['Tactic', B], 'none', [{ op: 'quick' }], "Gnomon's first turn in the next fight comes on tick 1."),
+  shadowStep: card('Shadow Step', 2, 3, [B], 'none', [{ op: 'shadowStep' }], 'Gnomon steps one lane cell ahead, into the Long Shadow.'),
+  rewind: card('Rewind', 4, 9, [B, 'Ultimate'], 'none', [{ op: 'rewind' }], "Gnomon's HP and place go back to the start of the phase, even from death."),
 
   // Vespertine
   outOfTheDark: card('Out of the Dark', 2, 2, ['Engage', B], 'enemy', [{ op: 'engage', reach: 1, length: 25 }], 'Engage (1, 25).'),
-  starPin: card('Star Pin', 1, 4, ['Tactic', B], 'enemy', [{ op: 'focus', ticks: 15 }], 'Her next fight: every ally attacks the target for 15 ticks.'),
-  fade: card('Fade', 1, 7, ['Tactic', B], 'none', [{ op: 'fade', tick: 10 }], 'She leaves her next fight after tick 10.'),
+  starPin: card('Star Pin', 1, 4, ['Tactic', B], 'enemy', [{ op: 'focus', ticks: 15 }], "In Vespertine's next fight, every ally attacks the target for 15 ticks."),
+  fade: card('Fade', 1, 7, ['Tactic', B], 'none', [{ op: 'fade', tick: 10 }], 'Vespertine leaves the next fight after tick 10.'),
   nightfall: card('Nightfall', 3, 1, [B, 'Ultimate'], 'none', [{ op: 'nightfall' }], 'Until the next fight phase the enemy sees only where it stands.'),
 
   // Carrion Abacus
   circling: card('Circling', 2, 6, ['Engage', B], 'enemy', [{ op: 'engage', reach: 2, length: 40, below: 60 }], 'Engage (2, 40) a hero under 60% HP.'),
-  countTheBones: card('Count the Bones', 0, 3, [B], 'none', [{ op: 'charge', n: 3, max: 10 }], 'Gain 3 Beads.'),
-  sumOfDebts: card('Sum of Debts', 3, 8, ['Join', B], 'none', [{ op: 'join', reach: 2 }, { op: 'opening' }], 'Join (2); his first turn is a Reckon.'),
+  countTheBones: card('Count the Bones', 0, 3, [B], 'none', [{ op: 'charge', n: 3, max: 10 }], 'Carrion Abacus gains 3 Beads.'),
+  sumOfDebts: card('Sum of Debts', 3, 8, ['Join', B], 'none', [{ op: 'join', reach: 2 }, { op: 'opening' }], "Carrion Abacus joins (2); the Abacus's first turn there is a Reckon."),
 
   // Moth Tenor
-  lure: card('Lure', 2, 4, ['Engage', B], 'enemy', [{ op: 'engage', reach: 2, length: 50, pull: true }], 'Engage (2, 50) on his own cell.'),
-  dustOfWings: card('Dust of Wings', 1, 5, ['Tactic', B], 'none', [{ op: 'slow', who: 'enemies', spd: 3, ticks: 20 }], 'His next fight: every enemy -3 SPD for 20 ticks.'),
-  lampSeason: card('Lamp Season', 2, 2, [B], 'none', [{ op: 'rally', where: 'lane' }], 'Next map phase, allied minions in his lane strike twice as often.'),
-  lanternProcession: card('Lantern Procession', 3, 3, [B, 'Ultimate'], 'none', [{ op: 'procession', n: 6 }], 'Up to 6 allied minions near him fight in his next fight.'),
+  lure: card('Lure', 2, 4, ['Engage', B], 'enemy', [{ op: 'engage', reach: 2, length: 50, pull: true }], "Engage (2, 50), fought on Moth Tenor's cell."),
+  dustOfWings: card('Dust of Wings', 1, 5, ['Tactic', B], 'none', [{ op: 'slow', who: 'enemies', spd: 3, ticks: 20 }], "In Moth Tenor's next fight, every enemy -3 SPD for 20 ticks."),
+  lampSeason: card('Lamp Season', 2, 2, [B], 'none', [{ op: 'rally', where: 'lane' }], "Next map phase, allied minions in Moth Tenor's lane strike twice as often."),
+  lanternProcession: card('Lantern Procession', 3, 3, [B, 'Ultimate'], 'none', [{ op: 'procession', n: 6 }], "Up to 6 allied minions near Moth Tenor fight beside the Tenor in the next fight."),
 
   // Lacuna
   negativeSpace: card('Negative Space', 3, 6, ['Engage', B], 'enemy', [{ op: 'engage', reach: 2, length: 50 }], 'Engage (2, 50).'),
@@ -317,17 +365,17 @@ export const CARDS = {
   // Vintner Ghast
   spikedCup: card('Spiked Cup', 2, 6, ['Engage', B], 'enemy', [{ op: 'engage', reach: 1, length: 50 }, { op: 'expose', pct: 100, ticks: 10 }], 'Engage (1, 50); the target takes double damage for 10 ticks.'),
   secondGlass: card('Second Glass', 1, 8, [B], 'none', [{ op: 'heal', pct: 15, reach: 2 }], 'Allies within 2 heal 15%.'),
-  vintage: card('Vintage', 2, 9, [B], 'none', [{ op: 'rally', where: 'cell' }], 'Next map phase, allied minions with her strike twice as often.'),
+  vintage: card('Vintage', 2, 9, [B], 'none', [{ op: 'rally', where: 'cell' }], "Next map phase, allied minions on Vintner Ghast's cell strike twice as often."),
 
   // Scrimshander
   killLine: card('Kill Line', 3, 8, ['Engage', B], 'enemy', [{ op: 'engage', reach: 1, length: 40 }], 'Engage (1, 40).'),
-  boneNeedle: card('Bone Needle', 1, 6, ['Tactic', B], 'none', [{ op: 'firstHit', pct: 200 }], 'Her first attack in her next fight deals 200%.'),
-  ivoryWard: card('Ivory Ward', 2, 2, [B], 'none', [{ op: 'evade' }], 'Later engages cannot target her.'),
+  boneNeedle: card('Bone Needle', 1, 6, ['Tactic', B], 'none', [{ op: 'firstHit', pct: 200 }], "Scrimshander's first attack in the next fight deals 200% DMG."),
+  ivoryWard: card('Ivory Ward', 2, 2, [B], 'none', [{ op: 'evade' }], 'Later engages cannot target Scrimshander.'),
 
   // Brass Reliquary
-  fuse: card('Fuse', 2, 7, [B], 'none', [{ op: 'clear', n: 1 }], 'Next map phase she kills one more minion a tick.'),
+  fuse: card('Fuse', 2, 7, [B], 'none', [{ op: 'clear', n: 1 }], 'Next map phase, Brass Reliquary kills one more minion a tick.'),
   tampPowder: card('Tamp Powder', 1, 2, [B], 'none', [{ op: 'cadence', every: 2 }], 'Next map phase, Bombard fires every 2 ticks.'),
-  brace: card('Brace', 1, 3, ['Tactic', B], 'none', [{ op: 'empower', who: 'source', res: 40, spd: 4 }], 'Her next fight: +40 RES, +4 SPD.'),
+  brace: card('Brace', 1, 3, ['Tactic', B], 'none', [{ op: 'empower', who: 'source', res: 40, spd: 4 }], "In Brass Reliquary's next fight, the Reliquary gets +40 RES, +4 SPD."),
   relicShell: card('Relic Shell', 4, 9, [B, 'Ultimate'], 'siege', [{ op: 'shell', amount: 600, reach: 4 }], '600 damage to an enemy hero or structure within 4.'),
 } as const satisfies Record<string, CardDef>;
 

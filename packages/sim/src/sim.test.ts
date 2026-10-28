@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createAgent, DIFFICULTIES } from './ai.ts';
-import { CELLS, CORE, LANES, N_CELLS, NEIGHBOURS, STRUCTURE_SITES, distance, mirror } from './board.ts';
-import { CARDS_KEPT, FIGHT_EVERY, STAPLES, WAVE_SIZE, XP_UNIT, buildDeck, lineups, type CardId, type HeroId } from './content.ts';
-import { awardXp, kill, maxHp } from './hero.ts';
+import { CELLS, CORE, JUNGLE_HALVES, LANES, N_CELLS, NEIGHBOURS, STRUCTURE_SITES, distance, mirror, opposite } from './board.ts';
+import { CAMP_IDS, CARDS_KEPT, FIGHT_EVERY, STAPLES, WAVE_SIZE, XP_UNIT, buildDeck, campDef, lineups, type CardId, type HeroId } from './content.ts';
+import { awardXp, kill, maxHp, stats } from './hero.ts';
 import { runMatch } from './match.ts';
 import { nextU32, randInt, seedRng } from './rng.ts';
 import { advance, createMatch, hashState, step } from './sim.ts';
@@ -119,6 +119,51 @@ describe('map phase', () => {
     expect(s.heroes[3]!.xp).toBe(XP_UNIT * 1.5);
     awardXp(s, s.heroes.slice(0, 3), 0, 1);
     expect(s.heroes[0]!.xp).toBe(XP_UNIT / 3);
+  });
+});
+
+describe('jungle camps', () => {
+  it('lays out one of each camp a side, three in one jungle half and two in the other, turned about the centre for side 1', () => {
+    for (let seed = 1; seed <= 30; seed++) {
+      const camps = createMatch(seed).camps;
+      for (const side of [0, 1] as const) {
+        const own = camps.filter((c) => c.owner === side);
+        expect(own.map((c) => c.kind).sort()).toEqual([...CAMP_IDS].sort());
+        expect(new Set(own.map((c) => c.cell)).size).toBe(5);
+        const split = JUNGLE_HALVES[side].map((half) => own.filter((c) => half.includes(c.cell)).length).sort();
+        expect(split).toEqual([2, 3]);
+      }
+      for (const c of camps.filter((x) => x.owner === 0)) {
+        expect(camps.some((d) => d.owner === 1 && d.kind === c.kind && d.cell === opposite(c.cell))).toBe(true);
+      }
+    }
+  });
+
+  it('places the camps differently from match to match', () => {
+    const layout = (seed: number) => createMatch(seed).camps.map((c) => `${c.kind}@${c.cell}`).join();
+    expect(new Set([1, 2, 3, 4, 5, 6].map(layout)).size).toBeGreaterThan(4);
+  });
+
+  it('fells creeps with the hero\'s DMG, spilling over, and respawns the camp after its timer', () => {
+    const s = createMatch(5);
+    const jungler = s.heroes.find((h) => h.side === 0 && h.role === 'jungle')!;
+    const camp = s.camps.find((c) => c.owner === 0 && c.kind === 'wallflowers')!;
+    const def = campDef('wallflowers');
+    jungler.cell = camp.cell;
+    jungler.hp = 99_999;
+    jungler.roam = camp.cell;
+    s.heroes.filter((h) => h !== jungler).forEach((h) => { h.cell = CORE[h.side]; h.retreating = true; });
+    camp.hp = 1;
+    advance(s, []);
+    expect(camp.creeps).toBe(def.creeps - 1);
+    expect(camp.hp).toBe(def.hp - (stats(jungler).dmg - 1));
+    while (camp.creeps > 0) advance(s, []);
+    expect(jungler.xp).toBe(def.xp * def.creeps * XP_UNIT);
+    const back = camp.respawnAt;
+    expect(back - s.mapTick).toBe(def.respawn);
+    jungler.retreating = true;
+    idle(s, (x) => x.mapTick === back);
+    expect([camp.creeps, camp.hp]).toEqual([def.creeps, def.hp]);
   });
 });
 

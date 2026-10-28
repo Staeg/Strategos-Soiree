@@ -1,6 +1,6 @@
 import type { RngState } from './rng.ts';
 import type { StructureKind } from './board.ts';
-import type { ArmedOp, CardId, HeroId } from './content.ts';
+import type { ArmedOp, CampId, CardId, HeroId } from './content.ts';
 
 export type Side = 0 | 1;
 /** 0 top, 1 mid, 2 bot. */
@@ -143,7 +143,12 @@ export interface Structure {
 export interface Camp {
   cell: number;
   owner: Side;
+  kind: CampId;
+  /** Creeps still standing, and the HP left on the one being fought. */
   creeps: number;
+  hp: number;
+  /** Ticks fought since it last stood whole: creeps strike on every `every`th. */
+  fought: number;
   /** Map tick the camp refills, or -1 while it stands. */
   respawnAt: number;
 }
@@ -250,6 +255,8 @@ export type GameEvent =
   | { type: 'draw'; side: Side }
   | { type: 'order'; side: Side; uid: number; order: 'stance' | 'roam' | 'ult' }
   | { type: 'minions'; cell: number; side: Side; died: number }
+  /** `n` minions of `side` walked from index `pos` of `lane` to the next cell along it. */
+  | { type: 'march'; lane: LaneId; pos: number; side: Side; n: number }
   | { type: 'hurt'; uid: number; amount: number; by: 'minion' | 'tower' | 'creep' | 'card' | 'hero' }
   | { type: 'heal'; uid: number; amount: number }
   | { type: 'structure'; index: number; amount: number }

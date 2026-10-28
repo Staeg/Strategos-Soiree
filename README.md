@@ -6,8 +6,8 @@ Every 50 map ticks the match stops for a **fight phase**: both sides commit
 cards blind, reveal, resolve them by initiative, and each initiative's
 engagements play out in fight ticks before the next resolves.
 
-This is the rough structure with the first ten heroes (two per role, split
-between the sides by the seed), against an AI of two difficulties, with
+This is the rough structure with the first ten heroes (two per role: before
+each match you pick one of each pair and the rival fields the other), against an AI of two difficulties, with
 placeholder pixel art drawn entirely from code. The roster is in
 [docs/heroes-draft.md](docs/heroes-draft.md). The
 rules as implemented, and which gaps were filled by guesswork, are in
@@ -18,6 +18,7 @@ npm install
 npm run dev          # play at http://localhost:5173
 npm test             # determinism and rules tests
 npm run arena -- 50  # AI-vs-AI win-rate table over 50 seeds per pairing
+npm run jungle -- 200 # jungle camp tuning bench: XP, walks home, respawns
 npm run build        # static site in packages/client/dist
 ```
 
@@ -71,10 +72,12 @@ hero palettes under "Placeholder art" in
 visually distinct as possible.
 
 **The match screen** puts your heroes down the left and the rival's down the
-right (hover a bar to slide it out; rivals out of sight are greyed and show
-only what was last seen), the board in the middle, the hand along the bottom
-in every phase, and mana and the initiative timeline bottom right. Hold
-**Ctrl** over a card or a hero bar for its full rules. Hotkeys hide behind
+right as their figures (hover a bar to slide it out with the name and the
+rest; rivals out of sight are greyed and show only what was last seen), the board in the middle, the hand along the bottom
+in every phase, and mana and the initiative timeline bottom right. HP, DMG, RES and SPD
+are drawn as a heart, sword, shield and boot everywhere. A hero's own cards
+carry its face, and hovering one calls the hero out on the board and in its
+bar. Hold **Ctrl** over a card or a hero bar for its full rules. Hotkeys hide behind
 the **?** in the bottom-left corner, next to a debug **log** of every event.
 
 ## Deploying

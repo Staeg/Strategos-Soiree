@@ -9,7 +9,8 @@
   },
   "scripts": {
     "typecheck": "tsc -p .",
-    "arena": "tsx scripts/arena.ts"
+    "arena": "tsx scripts/arena.ts",
+    "jungle": "tsx scripts/jungle.ts"
   },
   "devDependencies": {
     "tsx": "^4.20.0"

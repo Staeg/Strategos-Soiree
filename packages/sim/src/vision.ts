@@ -48,7 +48,7 @@ export function viewFor(s: MatchState, side: Side): MatchView {
   v.rng = { map: [0, 0, 0, 0], fight: [0, 0, 0, 0], cards: [0, 0, 0, 0] };
   for (const h of v.heroes) if (!heroSeen(s, side, s.heroes[h.uid]!, visible)) h.cell = -1;
   v.minions = v.minions.filter((m) => m.side === side || visible[laneCell(m.lane, m.pos)]);
-  for (const c of v.camps) if (!visible[c.cell]) c.creeps = -1;
+  for (const c of v.camps) if (!visible[c.cell]) [c.creeps, c.hp] = [-1, -1];
   v.wards = v.wards.filter((w) => w.side === side);
   v.events = s.events.filter((e) => eventVisible(s, e, side, visible));
   return v;
@@ -58,6 +58,10 @@ function eventVisible(s: MatchState, e: GameEvent, side: Side, visible: boolean[
   const hero = (uid: number) => heroSeen(s, side, s.heroes[uid]!, visible);
   switch (e.type) {
     case 'minions': return visible[e.cell] === true;
+    case 'march': {
+      const next = e.pos + (e.side === 0 ? 1 : -1);
+      return e.side === side || visible[laneCell(e.lane, e.pos)] === true || visible[laneCell(e.lane, next)] === true;
+    }
     case 'hurt': case 'heal': case 'ability': case 'ascend': case 'act':
       return hero(e.uid);
     case 'order': return e.side === side;

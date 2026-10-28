@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import { HERO_IDS, type HeroId, type Side } from '@soiree/sim';
+import { CAMP_IDS, HERO_IDS, type HeroId, type Side } from '@soiree/sim';
+import { CAMP_ART } from './camps.ts';
 import { FONT_CHARS, glyph } from './font.ts';
 import { BODY_CX, BODY_STEP, BODY_STRIDE, BODY_X, BODY_Y, CARD_ICONS, COSTUMES, FRAME_H, FRAME_W, SIGNATURES, type Patch } from './heroes.ts';
 import { AMBER, css, CREAM, DUSK, GOLD, INK, inks, MAUVE, PLUM, TEAM, VIOLET } from './palette.ts';
@@ -22,6 +23,8 @@ export function forgeAll(scene: Phaser.Scene): void {
 }
 
 export const heroKey = (id: string, side: Side) => `hero-${id}-${side}`;
+export const FACE_W = 14;
+export const FACE_H = 12;
 export const heroOriginX = (side: Side) => (side === 0 ? BODY_CX : FRAME_W - BODY_CX) / FRAME_W;
 
 function canvas(scene: Phaser.Scene, key: string, w: number, h: number, draw: (ctx: CanvasRenderingContext2D) => void) {
@@ -56,6 +59,8 @@ function forgeHero(scene: Phaser.Scene, id: HeroId, side: Side): void {
     });
   });
   frames.forEach((_, f) => tex.add(String(f), 0, f * FRAME_W, 0, FRAME_W, FRAME_H));
+  // A head-and-shoulders crop of the walking frame, for card badges.
+  tex.add('face', 0, side === 0 ? BODY_CX - 6 : FRAME_W - BODY_CX - 8, 0, FACE_W, FACE_H);
   scene.anims.create({ key: `${key}-walk`, frames: [{ key, frame: '0' }, { key, frame: '1' }], frameRate: 6, repeat: -1 });
   scene.anims.create({ key: `${key}-idle`, frames: [{ key, frame: '0' }], frameRate: 1 });
   scene.anims.create({ key: `${key}-strike`, frames: [{ key, frame: '2' }, { key, frame: '2' }, { key, frame: '0' }], frameRate: 10 });
@@ -137,13 +142,12 @@ function forgeEffects(scene: Phaser.Scene): void {
   canvas(scene, 'plus', 5, 5, (ctx) => { rect(ctx, '#7fc06a', 2, 0, 1, 5); rect(ctx, '#7fc06a', 0, 2, 5, 1); });
   canvas(scene, 'shadow', 10, 3, (ctx) => { rect(ctx, css(INK), 2, 0, 6, 3); rect(ctx, css(INK), 0, 1, 10, 1); });
   canvas(scene, 'pixel', 1, 1, (ctx) => rect(ctx, '#ffffff', 0, 0, 1, 1));
-  // Camp creeps: little masked wallflowers, neutral and pale.
-  canvas(scene, 'creep', 5, 6, (ctx) => {
-    rect(ctx, css(INK), 0, 0, 5, 4);
-    rect(ctx, css(CREAM), 1, 1, 3, 2);
-    rect(ctx, css(INK), 1, 1, 1, 1); rect(ctx, css(INK), 3, 1, 1, 1);
-    rect(ctx, css(DUSK), 1, 4, 3, 2);
-  });
+  // Camp creeps, neutral: no livery, the garden's own colours.
+  const garden = { ...inks(0), G: '#2f5a3a', l: '#4f8a55' };
+  for (const kind of CAMP_IDS) {
+    const { rows } = CAMP_ART[kind];
+    canvas(scene, `camp-${kind}`, rows[0]!.length, rows.length, (ctx) => paint(ctx, rows, 0, 0, garden));
+  }
   // Jungle: a clipped topiary on a pot.
   canvas(scene, 'hedge', 7, 9, (ctx) => {
     rect(ctx, '#2f5a3a', 1, 0, 5, 1); rect(ctx, '#2f5a3a', 0, 1, 7, 4); rect(ctx, '#2f5a3a', 1, 5, 5, 1);

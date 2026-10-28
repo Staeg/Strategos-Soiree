@@ -1,6 +1,6 @@
 import {
   createAgent, createMatch, hashState, step, viewFor,
-  type Agent, type Command, type Difficulty, type GameEvent, type MatchState, type MatchView, type Phase, type Side,
+  type Agent, type Command, type Difficulty, type GameEvent, type HeroId, type MatchState, type MatchView, type Phase, type Side,
 } from '@soiree/sim';
 
 type Without<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
@@ -30,6 +30,8 @@ export interface MatchSetup {
   seed: number;
   difficulty: Difficulty;
   side: Side;
+  /** Each side's heroes; saves from before the lineup screen leave it out and get the seed's. */
+  teams?: [HeroId[], HeroId[]];
 }
 
 /** The player's commands, by the step they went into; steps without any are left out. */
@@ -65,7 +67,7 @@ export class LocalSession implements Session {
   constructor(readonly setup: MatchSetup, readonly origin: MatchState | null = null) {
     this.side = setup.side;
     this.ai = createAgent(setup.difficulty, setup.seed ^ 0x5eed);
-    this.state = origin ? structuredClone(origin) : createMatch(setup.seed);
+    this.state = origin ? structuredClone(origin) : createMatch(setup.seed, setup.teams);
     this.view = this.prev = viewFor(this.state, this.side);
   }
 
