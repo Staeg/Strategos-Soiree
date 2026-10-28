@@ -1,8 +1,7 @@
 import Phaser from 'phaser';
-import { createAgent, DIFFICULTIES, HERO_IDS, type Difficulty } from '@soiree/sim';
+import { DIFFICULTIES, HERO_IDS, type Difficulty } from '@soiree/sim';
 import { heroKey, heroOriginX } from '../art/forge.ts';
 import { GOLD, MAUVE } from '../art/palette.ts';
-import { LocalSession } from '../session.ts';
 import { backdrop, button, centred, W } from '../ui.ts';
 
 const BLURB: Record<Difficulty, string> = {
@@ -28,13 +27,8 @@ export class Title extends Phaser.Scene {
 
     const hint = centred(this, W / 2, 330, 'choose your rival', MAUVE);
     DIFFICULTIES.forEach((d, i) => {
-      const b = button(this, W / 2 + (i - (DIFFICULTIES.length - 1) / 2) * 110, 300, 100, d, () => this.begin(d));
+      const b = button(this, W / 2 + (i - (DIFFICULTIES.length - 1) / 2) * 110, 300, 100, d, () => this.scene.start('lineup', { difficulty: d }));
       b.on('pointerover', () => hint.setText(BLURB[d].toUpperCase()));
     });
-  }
-
-  private begin(difficulty: Difficulty): void {
-    const seed = (Date.now() ^ (Math.random() * 0x7fffffff)) >>> 0;
-    this.scene.start('match', { session: new LocalSession(seed, createAgent(difficulty, seed ^ 0x5eed)) });
   }
 }

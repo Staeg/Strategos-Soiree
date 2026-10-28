@@ -1,6 +1,6 @@
 import {
-  createMatch, step, viewFor,
-  type Agent, type Command, type GameEvent, type MatchState, type MatchView, type Phase, type Side,
+  createMatch, lineups, step, viewFor,
+  type Agent, type Command, type GameEvent, type HeroId, type MatchState, type MatchView, type Phase, type Side,
 } from '@soiree/sim';
 
 type Without<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
@@ -40,8 +40,8 @@ export class LocalSession implements Session {
   private pending: Command[] = [];
   private aiWait = AI_PAUSE_STEPS;
 
-  constructor(seed: number, private readonly ai: Agent, readonly side: Side = 0) {
-    this.state = createMatch(seed);
+  constructor(seed: number, private readonly ai: Agent, readonly side: Side = 0, teams: readonly [readonly HeroId[], readonly HeroId[]] = lineups(seed)) {
+    this.state = createMatch(seed, teams);
     this.view = this.prev = viewFor(this.state, side);
   }
 

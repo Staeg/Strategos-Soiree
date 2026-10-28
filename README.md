@@ -6,8 +6,8 @@ Every 50 map ticks the match stops for a **fight phase**: both sides commit
 cards blind, reveal, resolve them by initiative, and each initiative's
 engagements play out in fight ticks before the next resolves.
 
-This is the rough structure with the first ten heroes (two per role, split
-between the sides by the seed), against an AI of two difficulties, with
+This is the rough structure with the first ten heroes (two per role: before
+each match you pick one of each pair and the rival fields the other), against an AI of two difficulties, with
 placeholder pixel art drawn entirely from code. The roster is in
 [docs/heroes-draft.md](docs/heroes-draft.md). The
 rules as implemented, and which gaps were filled by guesswork, are in
