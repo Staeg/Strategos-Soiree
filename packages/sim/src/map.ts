@@ -447,6 +447,7 @@ function march(s: MatchState, held: number[]): void {
       if (minionsAt(s, cell, foe(side)) > 0 || enemyStructure(s, cell, side)) continue;
       m.n -= movers;
       s.minions.push({ lane: m.lane, pos: next, side, n: movers });
+      s.events.push({ type: 'march', lane: m.lane, pos: m.pos, side, n: movers });
     }
   }
 }

@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
-import { cardDef, heroDef, type GameEvent, type MatchView, type Side } from '@soiree/sim';
-import { CREAM, DUSK, GOLD, INK, MAUVE, TEAM } from '../art/palette.ts';
+import { CORE, cardDef, heroDef, type GameEvent, type MatchView, type Side } from '@soiree/sim';
+import { CREAM, DUSK, GOLD, INK, MAUVE, PLUM, TEAM } from '../art/palette.ts';
 import { clip, LINE_H, text, wrap } from '../ui.ts';
 
 const KEEP = 2000;
@@ -8,12 +8,20 @@ const X = 4, Y = 164, WIDTH = 300, HEIGHT = 178;
 const COLS = Math.floor((WIDTH - 10) / 4);
 const ROWS = Math.floor((HEIGHT - 16) / LINE_H);
 
+interface Line {
+  text: string;
+  tint: number;
+  /** Where it happened, lit on the board while the line is hovered. */
+  cells: number[];
+}
+
 /**
  * A raw record of every event this side was shown, newest at the bottom: a
  * debugging aid, folded away behind a button in the corner by default.
  */
 export class DebugLog {
-  private lines: { text: string; tint: number }[] = [];
+  private lines: Line[] = [];
+  private shown: Line[] = [];
   private open = false;
   /** Lines scrolled up from the bottom. */
   private scroll = 0;
@@ -21,14 +29,16 @@ export class DebugLog {
   private readonly box: Phaser.GameObjects.Container;
   private readonly body: Phaser.GameObjects.BitmapText[] = [];
   private readonly title: Phaser.GameObjects.BitmapText;
+  private readonly band: Phaser.GameObjects.Graphics;
 
   constructor(private readonly scene: Phaser.Scene, private readonly me: Side) {
     const g = scene.add.graphics()
       .fillStyle(INK, 0.94).fillRect(0, 0, WIDTH, HEIGHT)
       .lineStyle(1, DUSK).strokeRect(0.5, 0.5, WIDTH - 1, HEIGHT - 1);
+    this.band = scene.add.graphics();
     this.title = text(scene, 5, 4, '', GOLD);
     for (let i = 0; i < ROWS; i++) this.body.push(text(scene, 5, 14 + i * LINE_H, '', MAUVE));
-    this.box = scene.add.container(X, Y, [g, this.title, ...this.body]).setDepth(2500).setVisible(false);
+    this.box = scene.add.container(X, Y, [g, this.band, this.title, ...this.body]).setDepth(2500).setVisible(false);
     scene.input.on('wheel', (p: Phaser.Input.Pointer, _o: unknown, _dx: number, dy: number) => {
       if (!this.open || !new Phaser.Geom.Rectangle(X, Y, WIDTH, HEIGHT).contains(p.x, p.y)) return;
       this.scroll = Phaser.Math.Clamp(this.scroll - Math.sign(dy) * 3, 0, Math.max(0, this.wrapped().length - ROWS));
@@ -44,17 +54,30 @@ export class DebugLog {
 
   get isOpen(): boolean { return this.open; }
 
-  record(v: MatchView, events: GameEvent[]): void {
+  /** `prev` is the view before these events, for where the fallen stood. */
+  record(v: MatchView, prev: MatchView, events: GameEvent[]): void {
     for (const e of events) {
       const line = describe(v, e, this.me);
-      if (line) this.lines.push({ text: `${v.mapTick}${v.phase === 'clash' ? `.${v.fightTick}` : ''} ${line}`, tint: tintOf(e) });
+      if (line) this.lines.push({ text: `${v.mapTick}${v.phase === 'clash' ? `.${v.fightTick}` : ''} ${line}`, tint: tintOf(e), cells: cellsOf(v, prev, e) });
     }
     if (this.lines.length > KEEP) this.lines.splice(0, this.lines.length - KEEP);
     if (events.length) this.dirty = true;
   }
 
-  private wrapped(): { text: string; tint: number }[] {
-    return this.lines.flatMap((l) => wrap(l.text, COLS).map((t, i) => ({ text: i ? `  ${t}` : t, tint: l.tint })));
+  private wrapped(): Line[] {
+    return this.lines.flatMap((l) => wrap(l.text, COLS).map((t, i) => ({ ...l, text: i ? `  ${t}` : t })));
+  }
+
+  /** The cells of the line under a screen point, banding every row of that line; none if the log is shut. */
+  hover(x: number, y: number): number[] {
+    this.band.clear();
+    const row = Math.floor((y - Y - 14) / LINE_H);
+    const line = this.open && x >= X && x < X + WIDTH ? this.shown[row] : undefined;
+    if (!line) return [];
+    this.shown.forEach((l, i) => {
+      if (l.cells === line.cells) this.band.fillStyle(PLUM).fillRect(2, 13 + i * LINE_H, WIDTH - 4, LINE_H);
+    });
+    return line.cells;
   }
 
   draw(): void {
@@ -63,7 +86,7 @@ export class DebugLog {
     this.dirty = false;
     const all = this.wrapped();
     const end = all.length - this.scroll;
-    const shown = all.slice(Math.max(0, end - ROWS), end);
+    const shown = this.shown = all.slice(Math.max(0, end - ROWS), end);
     this.title.setText(clip([`LOG  ${this.lines.length} EVENTS${this.scroll ? `  (SCROLLED ${this.scroll})` : '  WHEEL TO SCROLL'}`], 1, COLS)[0]!);
     this.body.forEach((t, i) => {
       const l = shown[i];
@@ -78,6 +101,35 @@ function tintOf(e: GameEvent): number {
   return e.type === 'phase' ? GOLD : e.type === 'death' || e.type === 'fall' ? CREAM : MAUVE;
 }
 
+/** Where an event happened, as far as this side can tell. */
+function cellsOf(v: MatchView, prev: MatchView, e: GameEvent): number[] {
+  // A hero where it stands, or where it stood if this step killed it.
+  const hero = (uid: number): number[] => {
+    const h = v.heroes[uid];
+    const before = prev.heroes[uid];
+    if (h && h.cell >= 0 && h.respawnAt < 0) return [h.cell];
+    return before && before.cell >= 0 && before.respawnAt < 0 ? [before.cell] : [];
+  };
+  const fight = (id: number) => v.engagements.filter((f) => f.id === id).map((f) => f.cell);
+  const cells = ((): number[] => {
+    switch (e.type) {
+      case 'minions': return [e.cell];
+      case 'hurt': case 'heal': case 'death': case 'ability': case 'ascend': case 'order': return hero(e.uid);
+      case 'respawn': return [CORE[v.heroes[e.uid]!.side]];
+      case 'structure': case 'fall': return [v.structures[e.index]!.cell];
+      case 'card': {
+        const t = e.play.target;
+        return [...hero(e.play.source), ...(t.kind === 'hero' ? hero(t.uid) : t.kind === 'cell' ? [t.cell] : [])];
+      }
+      case 'engage': return [e.cell];
+      case 'act': return [...hero(e.uid), ...e.hits.flatMap((h) => hero(h.uid))];
+      case 'squad': case 'disengage': return fight(e.id);
+      case 'phase': case 'draw': case 'march': return [];
+    }
+  })();
+  return [...new Set(cells)];
+}
+
 function describe(v: MatchView, e: GameEvent, me: Side): string {
   const hero = (uid: number) => {
     const h = v.heroes[uid];
@@ -88,6 +140,7 @@ function describe(v: MatchView, e: GameEvent, me: Side): string {
     case 'phase': return `-- ${e.phase} --`;
     case 'draw': return `${side(e.side)} drew a card`;
     case 'order': return `${side(e.side)} order ${e.order}: ${hero(e.uid)}`;
+    case 'march': return '';
     case 'minions': return `${e.died} ${e.side === me ? 'of your' : 'rival'} minion${e.died === 1 ? '' : 's'} died at cell ${e.cell}`;
     case 'hurt': return `${hero(e.uid)} takes ${e.amount} from ${e.by}`;
     case 'heal': return `${hero(e.uid)} heals ${e.amount}`;
