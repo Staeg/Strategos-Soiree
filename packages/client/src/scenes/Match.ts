@@ -1,22 +1,42 @@
 import Phaser from 'phaser';
 import {
-  CARD_OWNER, CARDS_KEPT, CORE, DRAW_EVERY, FIGHT_EVERY, KEYWORD_TEXT, N_CELLS, XP_UNIT, cardDef, heroDef, laneCell, maxHp,
-  type CardId, type GameEvent, type Hero, type MatchView, type Target,
+  CARD_OWNER, CARDS_KEPT, CORE, DRAW_EVERY, FIGHT_EVERY, N_CELLS, cardDef, foe, heroDef, laneCell, maxHp,
+  type CardId, type GameEvent, type Hero, type MatchView, type Side, type Target,
 } from '@soiree/sim';
 import { heroKey, heroOriginX } from '../art/forge.ts';
-import { BLOOD, CREAM, DUSK, GOLD, INK, LEAF, MAUVE, NIGHT, PLUM, TEAM, VIOLET } from '../art/palette.ts';
+import { BLOOD, CREAM, DUSK, GOLD, INK, LEAF, MANA, MANA_LIGHT, MAUVE, NIGHT, PLUM, TEAM, VIOLET } from '../art/palette.ts';
 import { cellAtPoint, cellX, cellY, drawBoard, hexPoints } from '../board.ts';
-import { CARD_H, CARD_W, cardFace, iconKey } from '../cards.ts';
+import { BIG_W, CARD_H, CARD_W, cardFace, iconKey } from '../cards.ts';
+import { DebugLog } from '../hud/log.ts';
+import { Roster } from '../hud/roster.ts';
 import type { Session } from '../session.ts';
 import { button, centred, H, text, W, type Button } from '../ui.ts';
 
 /** Where heroes stand inside a cell, by side and by arrival order. */
-const SLOTS: Record<0 | 1, [number, number][]> = {
+const SLOTS: Record<Side, [number, number][]> = {
   0: [[-6, 4], [-1, 10], [-11, 10], [-7, -2], [-12, 4]],
   1: [[6, 4], [1, 10], [11, 10], [7, -2], [12, 4]],
 };
 const SPEEDS = [0.5, 1, 2, 4];
-const PANEL_X = 312;
+
+/** The hand fans along the bottom between the corner buttons and the fight console. */
+const HAND_CX = 300;
+const HAND_SPAN = 300;
+const HAND_Y = H - 3 - CARD_H / 2;
+/** The fight console in the bottom-right corner. */
+const CON = { x: 474, y: 266, w: 162, h: 90 };
+
+/**
+ * Minion dots: a little swarm in each side's upper corner of a cell,
+ * filled from the middle out so a few minions huddle and a wave spreads.
+ */
+const SWARM: Record<Side, [number, number][]> = (() => {
+  const spots: [number, number][] = [];
+  for (let y = -14; y <= -6; y += 2) for (let x = -12; x <= 0; x += 2) spots.push([x + (y % 4 === 0 ? 1 : 0), y]);
+  const centre = (p: [number, number]) => (p[0] + 6) ** 2 + ((p[1] + 10) * 1.4) ** 2 + ((p[0] * 7 + p[1] * 13) & 3);
+  spots.sort((a, b) => centre(a) - centre(b));
+  return { 0: spots, 1: spots.map(([x, y]) => [-x, y]) };
+})();
 
 type Adder = <T extends Phaser.GameObjects.GameObject>(o: T) => T;
 
@@ -32,29 +52,55 @@ interface HeroView {
   striking: number;
 }
 
+/** A layer rebuilt from scratch only when what it shows changes. */
+class Layer {
+  private key = '';
+  readonly box: Phaser.GameObjects.Container;
+  constructor(scene: Phaser.Scene, depth: number) { this.box = scene.add.container(0, 0).setDepth(depth); }
+  /** Rebuilds with `build` if `key` differs from last time. */
+  draw(key: unknown, build: (add: Adder) => void): void {
+    const k = JSON.stringify(key);
+    if (k === this.key) return;
+    this.key = k;
+    this.box.removeAll(true);
+    build((o) => { this.box.add(o); return o; });
+  }
+  dirty(): void { this.key = ''; }
+}
+
 export class Match extends Phaser.Scene {
   private session!: Session;
   private heroes = new Map<number, HeroView>();
   private structures: Phaser.GameObjects.Image[] = [];
   private creeps: Phaser.GameObjects.Image[][] = [];
-  private counts = new Map<number, Phaser.GameObjects.BitmapText>();
+  private counts: Phaser.GameObjects.BitmapText[] = [];
   private fog!: Phaser.GameObjects.Graphics;
   private marks!: Phaser.GameObjects.Graphics;
   private bars!: Phaser.GameObjects.Graphics;
-  private hud!: Phaser.GameObjects.Graphics;
+  private top!: Phaser.GameObjects.Graphics;
   private phaseLabel!: Phaser.GameObjects.BitmapText;
   private clock!: Phaser.GameObjects.BitmapText;
   private hint!: Phaser.GameObjects.BitmapText;
   private speedButtons: Button[] = [];
-  private panel!: Phaser.GameObjects.Container;
-  private panelKey = '';
+  private roster!: Roster;
+  private log!: DebugLog;
+  private hand!: Layer;
+  private console!: Layer;
+  private orders!: Layer;
+  private help!: Layer;
+  private preview!: Layer;
+  private toasts: Phaser.GameObjects.BitmapText[] = [];
   private mode: Mode = { kind: 'idle' };
   private selected = -1;
   private hover = -1;
-  private alt = false;
-  private hoverCard: CardId | null = null;
+  private ctrl = false;
+  private helpPinned = false;
+  private helpHover = false;
+  /** Hand index under the pointer, or -1. */
+  private handHover = -1;
+  /** A played card under the pointer on the timeline. */
+  private timelineHover: { card: CardId; side: Side } | null = null;
   private discard = new Set<number>();
-  private log: string[] = [];
   private fogKey = -1;
 
   constructor() { super('match'); }
@@ -62,20 +108,22 @@ export class Match extends Phaser.Scene {
   init(data: { session: Session }): void {
     this.session = data.session;
     this.heroes.clear();
-    this.counts.clear();
+    this.counts = [];
     this.structures = [];
     this.creeps = [];
     this.speedButtons = [];
-    this.panelKey = '';
+    this.toasts = [];
     this.mode = { kind: 'idle' };
     this.selected = -1;
+    this.ctrl = false;
+    this.helpPinned = false;
     this.discard.clear();
-    this.log = [];
     this.fogKey = -1;
   }
 
   private get v(): MatchView { return this.session.view; }
-  private get me() { return this.session.side; }
+  private get me(): Side { return this.session.side; }
+  private get planning(): boolean { return this.v.phase === 'plan' && !this.v.sides[this.me].committed; }
 
   create(): void {
     this.add.graphics().fillStyle(NIGHT).fillRect(0, 0, W, H);
@@ -90,56 +138,72 @@ export class Match extends Phaser.Scene {
     this.fog = this.add.graphics().setDepth(50);
     this.marks = this.add.graphics().setDepth(70);
     this.bars = this.add.graphics().setDepth(400);
-    this.hud = this.add.graphics().setDepth(1000);
-    this.phaseLabel = centred(this, 164, 9, '').setDepth(1001);
-    this.clock = text(this, 12, 308, '', MAUVE).setDepth(1001);
-    this.hint = text(this, 12, 348, '', MAUVE).setDepth(1001);
-    this.panel = this.add.container(0, 0).setDepth(1500);
+    this.top = this.add.graphics().setDepth(1000);
+    this.phaseLabel = centred(this, W / 2, 8, '').setDepth(1001);
+    this.clock = text(this, 108, 6, '', MAUVE).setDepth(1001);
+    this.hint = centred(this, HAND_CX, HAND_Y - CARD_H / 2 - 8, '', CREAM).setDepth(1001);
+    for (let i = 0; i < 2; i++) this.counts.push(text(this, 0, 0, '').setDepth(72));
 
+    this.roster = new Roster(this, this.me);
+    this.log = new DebugLog(this, this.me);
+    this.orders = new Layer(this, 1050);
+    this.console = new Layer(this, 1050);
+    this.hand = new Layer(this, 1300);
+    this.preview = new Layer(this, 2000);
+    this.help = new Layer(this, 2600);
+
+    this.speedButtons.push(button(this, 418, 8, 22, 'II', () => { this.session.paused = !this.session.paused; }).setDepth(1001));
     SPEEDS.forEach((sp, i) => {
-      this.speedButtons.push(button(this, 152 + i * 34, 324, 30, `${sp}x`, () => { this.session.speed = sp; this.session.paused = false; }).setDepth(1001));
+      this.speedButtons.push(button(this, 444 + i * 24, 8, 22, `${sp}x`, () => { this.session.speed = sp; this.session.paused = false; }).setDepth(1001));
     });
-    this.speedButtons.push(button(this, 118, 324, 30, 'II', () => { this.session.paused = !this.session.paused; }).setDepth(1001));
+    const helpButton = button(this, 10, H - 9, 13, '?', () => { this.helpPinned = !this.helpPinned; }).setDepth(1001);
+    helpButton.on('pointerover', () => { this.helpHover = true; }).on('pointerout', () => { this.helpHover = false; });
+    button(this, 36, H - 9, 30, 'log', () => this.log.toggle()).setDepth(1001);
 
+    this.input.mouse?.disableContextMenu();
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => { this.hover = cellAtPoint(p.x, p.y); });
     this.input.on('pointerdown', (p: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) => {
-      if (over.length === 0) this.clickBoard(p);
+      if (over.length === 0) this.click(p);
     });
     const kb = this.input.keyboard!;
     kb.on('keydown', (e: KeyboardEvent) => this.key(e));
-    kb.on('keyup', (e: KeyboardEvent) => { if (e.key === 'Alt') { this.alt = false; this.panelKey = ''; } });
-    this.game.events.on(Phaser.Core.Events.BLUR, () => { this.alt = false; });
+    kb.on('keyup', (e: KeyboardEvent) => { if (e.key === 'Control') this.ctrl = false; });
+    this.game.events.on(Phaser.Core.Events.BLUR, () => { this.ctrl = false; });
 
     this.banner('The ball begins');
   }
 
-  override update(time: number): void {
-    for (const e of this.session.update(this.game.loop.delta)) this.react(e, time);
+  override update(time: number, delta: number): void {
+    const events = this.session.update(this.game.loop.delta);
+    this.log.record(this.v, events);
+    for (const e of events) this.react(e, time);
     if (this.v.phase !== 'plan' && this.mode.kind === 'card') this.mode = { kind: 'idle' };
+    const p = this.input.activePointer;
     this.drawFog();
     this.drawUnits(time);
-    this.drawHud();
-    this.drawPanel();
+    this.drawTop();
+    this.roster.update(this.v, this.selected, this.ctrl, p, delta, time);
+    this.drawHand(p);
+    this.drawPreview();
+    this.drawConsole();
+    this.drawOrders();
+    this.drawHelp();
+    this.log.draw();
   }
 
   // ---- input ---------------------------------------------------------------
 
   private key(e: KeyboardEvent): void {
-    if (e.key === 'Alt') {
-      e.preventDefault();
-      this.alt = true;
-      this.panelKey = '';
-      return;
-    }
+    if (e.key === 'Control') { this.ctrl = true; return; }
     const k = e.key.toLowerCase();
     if (k === 'escape') this.mode = { kind: 'idle' };
     else if (k === ' ') this.session.paused = !this.session.paused;
     else if (k === 's') this.orderStance();
     else if (k === 'r') this.beginOrder('roam');
     else if (k === 'u') this.beginOrder('ult');
+    else if (k === 'l') this.log.toggle();
     else if (k === 'enter' && this.v.phase === 'plan') this.commit();
     else if (['1', '2', '3', '4'].includes(k)) this.session.speed = SPEEDS[Number(k) - 1]!;
-    this.panelKey = '';
   }
 
   private own(uid: number): Hero | undefined {
@@ -166,6 +230,28 @@ export class Match extends Phaser.Scene {
       .map(([h]) => h);
   }
 
+  /** A click on nothing interactive: the hand, then the hero bars, then the board. */
+  private click(p: Phaser.Input.Pointer): void {
+    if (this.handHover >= 0) return this.clickCard(this.handHover, p.rightButtonDown());
+    const bar = this.roster.heroAt(p.x, p.y);
+    if (bar >= 0) {
+      const h = this.v.heroes[bar]!;
+      // While aiming, a bar is as good as the hero itself.
+      if (this.mode.kind === 'card' && h.cell >= 0) return this.aimAt([h], h.cell);
+      if (h.side === this.me) this.selected = bar;
+      return;
+    }
+    this.clickBoard(p);
+  }
+
+  private clickCard(i: number, right: boolean): void {
+    if (!this.planning) return;
+    const me = this.v.sides[this.me];
+    if (right) {
+      if (this.discard.has(i)) this.discard.delete(i); else this.discard.add(i);
+    } else if (cardDef(me.hand[i]!).cost <= me.mana) this.pickCard(i);
+  }
+
   private clickBoard(p: Phaser.Input.Pointer): void {
     const cell = cellAtPoint(p.x, p.y);
     const near = this.heroesNear(p.x, p.y);
@@ -175,29 +261,32 @@ export class Match extends Phaser.Scene {
       this.mode = { kind: 'idle' };
       return;
     }
-    if (mode.kind === 'card') {
-      const def = cardDef(this.v.sides[this.me].hand[mode.handIndex]!);
-      if (mode.source < 0) {
-        const src = near.find((h) => h.side === this.me);
-        if (src) this.aimCard(mode.handIndex, src.uid);
-        return;
-      }
-      if (def.aim === 'enemy' || def.aim === 'ally') {
-        const t = near.find((h) => (def.aim === 'enemy') === (h.side !== this.me));
-        if (t) this.play(mode.handIndex, mode.source, { kind: 'hero', uid: t.uid });
-      } else if (def.aim === 'tower') {
-        const st = this.v.structures.find((x) => x.cell === cell && x.side === this.me && x.hp > 0);
-        if (st) this.play(mode.handIndex, mode.source, { kind: 'cell', cell });
-      } else if (def.aim === 'siege') {
-        const t = near.find((h) => h.side !== this.me);
-        const st = this.v.structures.find((x) => x.cell === cell && x.side !== this.me && x.hp > 0);
-        if (t) this.play(mode.handIndex, mode.source, { kind: 'hero', uid: t.uid });
-        else if (st) this.play(mode.handIndex, mode.source, { kind: 'cell', cell });
-      }
-      return;
-    }
+    if (mode.kind === 'card') return this.aimAt(near, cell);
     const mine = near.find((h) => h.side === this.me);
     if (mine) this.selected = mine.uid;
+  }
+
+  private aimAt(near: Hero[], cell: number): void {
+    const mode = this.mode;
+    if (mode.kind !== 'card') return;
+    const def = cardDef(this.v.sides[this.me].hand[mode.handIndex]!);
+    if (mode.source < 0) {
+      const src = near.find((h) => h.side === this.me);
+      if (src) this.aimCard(mode.handIndex, src.uid);
+      return;
+    }
+    if (def.aim === 'enemy' || def.aim === 'ally') {
+      const t = near.find((h) => (def.aim === 'enemy') === (h.side !== this.me));
+      if (t) this.play(mode.handIndex, mode.source, { kind: 'hero', uid: t.uid });
+    } else if (def.aim === 'tower') {
+      const st = this.v.structures.find((x) => x.cell === cell && x.side === this.me && x.hp > 0);
+      if (st) this.play(mode.handIndex, mode.source, { kind: 'cell', cell });
+    } else if (def.aim === 'siege') {
+      const t = near.find((h) => h.side !== this.me);
+      const st = this.v.structures.find((x) => x.cell === cell && x.side !== this.me && x.hp > 0);
+      if (t) this.play(mode.handIndex, mode.source, { kind: 'hero', uid: t.uid });
+      else if (st) this.play(mode.handIndex, mode.source, { kind: 'cell', cell });
+    }
   }
 
   private pickCard(handIndex: number): void {
@@ -272,21 +361,27 @@ export class Match extends Phaser.Scene {
       this.creeps[i]!.forEach((img, k) => img.setVisible(n < 0 ? k === 0 : k < n).setAlpha(n < 0 ? 0.3 : 1));
     });
 
-    // Minions as pips: each side's count in a corner of the cell.
+    // Minions: a swarm of team-coloured dots; the count only for the cell under the pointer.
     const totals = new Map<number, number>();
     for (const m of v.minions) {
       const key = laneCell(m.lane, m.pos) * 2 + m.side;
       totals.set(key, (totals.get(key) ?? 0) + m.n);
     }
-    for (const t of this.counts.values()) t.setVisible(false);
+    this.counts.forEach((t) => t.setVisible(false));
     for (const [key, n] of totals) {
-      const [cell, side] = [key >> 1, (key & 1) as 0 | 1];
-      const x = cellX(cell) + (side === 0 ? -11 : 2), y = cellY(cell) - 12;
-      g.fillStyle(INK).fillRect(x - 1, y - 1, 11, 4);
-      for (let k = 0; k < Math.min(n, 3); k++) g.fillStyle(TEAM[side].light).fillRect(x + k * 3, y, 2, 2);
-      let label = this.counts.get(key);
-      if (!label) this.counts.set(key, label = text(this, 0, 0, '', CREAM).setDepth(71));
-      label.setText(String(n)).setPosition(x + (side === 0 ? -4 * String(n).length - 1 : 10), y - 2).setTint(TEAM[side].light).setVisible(true);
+      const [cell, side] = [key >> 1, (key & 1) as Side];
+      const [cx, cy] = [cellX(cell), cellY(cell)];
+      const spots = SWARM[side];
+      for (let k = 0; k < Math.min(n, spots.length); k++) {
+        const [dx, dy] = spots[k]!;
+        g.fillStyle(INK, 0.7).fillRect(cx + dx, cy + dy + 1, 1, 1);
+        g.fillStyle(TEAM[side].light).fillRect(cx + dx, cy + dy, 1, 1);
+      }
+      if (cell === this.hover && n > 0) {
+        const label = this.counts[side]!.setText(String(n)).setTint(TEAM[side].light).setVisible(true);
+        label.setPosition(side === 0 ? cx - 13 - label.width : cx + 14, cy - 13);
+        g.fillStyle(INK, 0.85).fillRect(label.x - 1, label.y - 1, label.width + 2, 7);
+      }
     }
 
     for (const e of v.engagements) {
@@ -324,9 +419,11 @@ export class Match extends Phaser.Scene {
       bars.fillStyle(INK).fillRect(bx, by, 10, 3);
       bars.fillStyle(h.retreating ? GOLD : TEAM[h.side].main).fillRect(bx + 1, by + 1, Math.max(1, Math.ceil((8 * h.hp) / max)), 1);
       if (h.stance === 'aggressive') bars.fillStyle(BLOOD).fillRect(bx + 10, by, 2, 3);
-      if (h.uid === this.selected) {
-        bars.lineStyle(1, CREAM, 0.6 + 0.4 * Math.sin(time / 150)).strokeRect(Math.round(x) - 7, Math.round(y) - 14, 14, 15);
-        if (h.roam >= 0) bars.lineStyle(1, CREAM, 0.5).strokePoints(hexPoints(h.roam, 4), true);
+      // A hero whose bar is hovered or selected is ringed on the board too.
+      if (h.uid === this.selected || h.uid === this.roster.hovered) {
+        const ring = h.uid === this.selected ? 0.6 + 0.4 * Math.sin(time / 150) : 0.5;
+        bars.lineStyle(1, CREAM, ring).strokeRect(Math.round(x) - 7, Math.round(y) - 14, 14, 15);
+        if (h.roam >= 0 && h.side === this.me) bars.lineStyle(1, CREAM, 0.5).strokePoints(hexPoints(h.roam, 4), true);
       }
     }
   }
@@ -373,19 +470,19 @@ export class Match extends Phaser.Scene {
         const p = at(e.uid);
         const h = v.heroes[e.uid]!;
         this.add.sprite(p?.x ?? cellX(CORE[h.side]), (p?.y ?? cellY(CORE[h.side])) - 6, 'puff').setDepth(3000).play('puff');
-        this.note(`${h.side === this.me ? 'Your' : 'Rival'} ${heroDef(h.id).name} falls`);
+        this.toast(`${h.side === this.me ? 'Your' : 'Rival'} ${heroDef(h.id).name} falls`);
         return;
       }
       case 'fall': {
         const st = v.structures[e.index]!;
         this.add.sprite(cellX(st.cell), cellY(st.cell) - 4, 'puff').setDepth(3000).setScale(2).play('puff');
-        this.note(`${st.side === this.me ? 'Your' : 'Rival'} ${st.kind} ${st.kind === 'core' ? 'shatters' : 'tower falls'}`);
+        this.toast(`${st.side === this.me ? 'Your' : 'Rival'} ${st.kind} ${st.kind === 'core' ? 'shatters' : 'tower falls'}`);
         return;
       }
       case 'card': {
         const def = cardDef(e.play.card);
         const who = e.play.side === this.me ? 'You' : 'Rival';
-        this.note(`${who}: ${def.name}${e.fizzle ? ` fizzles (${e.fizzle})` : ''}`);
+        this.toast(`${who}: ${def.name}${e.fizzle ? ` fizzles (${e.fizzle})` : ''}`, TEAM[e.play.side].light);
         return;
       }
       case 'engage':
@@ -394,19 +491,27 @@ export class Match extends Phaser.Scene {
       case 'phase':
         if (e.phase === 'plan') this.banner('Fight phase');
         if (e.phase === 'resolve' && v.initiative < 0) this.banner('Reveal');
-        if (e.phase === 'map') { this.log = []; this.discard.clear(); }
+        if (e.phase === 'map') this.discard.clear();
         if (e.phase === 'over') this.finale();
-        this.panelKey = '';
         return;
       default:
         return;
     }
   }
 
-  private note(line: string): void {
-    this.log.push(line);
-    if (this.log.length > 7) this.log.shift();
-    this.panelKey = '';
+  /** A short line that drifts in under the top bar and fades; a few can stack. */
+  private toast(line: string, tint = CREAM): void {
+    this.toasts = this.toasts.filter((t) => t.active);
+    if (this.toasts.length >= 4) this.toasts.shift()!.destroy();
+    const t = centred(this, W / 2, 0, line, tint).setDepth(2900).setAlpha(0);
+    this.toasts.push(t);
+    this.toasts.forEach((x, i) => x.setY(24 + i * 9));
+    const bg = this.add.graphics().setDepth(2899);
+    this.tweens.add({
+      targets: t, alpha: 1, duration: 150, hold: 2600, yoyo: true,
+      onUpdate: () => bg.clear().fillStyle(INK, 0.75 * t.alpha).fillRect(t.x - t.width / 2 - 2, t.y - 4, t.width + 4, 8),
+      onComplete: () => { t.destroy(); bg.destroy(); },
+    });
   }
 
   private float(x: number, y: number, value: string, tint: number): void {
@@ -415,193 +520,231 @@ export class Match extends Phaser.Scene {
   }
 
   private banner(label: string): void {
-    const t = centred(this, 164, 40, label, GOLD, 2).setDepth(3000).setAlpha(0);
+    const t = centred(this, W / 2, 64, label, GOLD, 2).setDepth(3000).setAlpha(0);
     this.tweens.add({ targets: t, alpha: 1, duration: 250, hold: 900, yoyo: true, onComplete: () => t.destroy() });
   }
 
   // ---- heads-up display -----------------------------------------------------------
 
-  private drawHud(): void {
+  private drawTop(): void {
     const v = this.v;
-    const g = this.hud.clear();
-    g.fillStyle(INK).fillRect(0, 0, 300, 18).fillRect(0, 300, 300, H - 300);
-    g.fillStyle(DUSK).fillRect(0, 18, 300, 1).fillRect(0, 300, 300, 1).fillRect(300, 0, 1, H);
+    const g = this.top.clear();
+    g.fillStyle(INK).fillRect(0, 0, W, 16);
+    g.fillStyle(DUSK).fillRect(0, 16, W, 1);
     for (const side of [0, 1] as const) {
       const total = v.structures.filter((s) => s.side === side).reduce((t, s) => t + Math.max(0, s.hp), 0);
       const max = v.structures.filter((s) => s.side === side).reduce((t, s) => t + s.maxHp, 0);
-      const w = 96, x = side === this.me ? 6 : 300 - 6 - w;
+      const w = 96, x = side === this.me ? 4 : W - 4 - w;
       const fill = Math.round((w * total) / max);
-      g.fillStyle(NIGHT).fillRect(x, 6, w, 6);
-      g.fillStyle(TEAM[side].main).fillRect(side === this.me ? x : x + w - fill, 6, fill, 6);
-      g.fillStyle(TEAM[side].light).fillRect(side === this.me ? x : x + w - fill, 6, fill, 1);
+      g.fillStyle(NIGHT).fillRect(x, 5, w, 6);
+      g.fillStyle(TEAM[side].main).fillRect(side === this.me ? x : x + w - fill, 5, fill, 6);
+      g.fillStyle(TEAM[side].light).fillRect(side === this.me ? x : x + w - fill, 5, fill, 1);
     }
     const phaseName = { map: 'map', plan: 'commit', resolve: 'reveal', clash: 'clash', over: 'the end' }[v.phase];
-    this.phaseLabel.setText(`${phaseName} ${v.phase === 'map' || v.fightPhase === 0 ? '' : `#${v.fightPhase}`}`.toUpperCase());
+    this.phaseLabel.setText(`${phaseName}${v.phase === 'map' || v.fightPhase === 0 ? '' : ` #${v.fightPhase}`}`.toUpperCase()).setTint(v.phase === 'map' ? CREAM : GOLD);
 
     const toFight = FIGHT_EVERY - (v.mapTick % FIGHT_EVERY);
     const toDraw = DRAW_EVERY - (v.mapTick % DRAW_EVERY);
-    g.fillStyle(NIGHT).fillRect(12, 314, 96, 3);
-    g.fillStyle(GOLD).fillRect(12, 314, Math.round((96 * (FIGHT_EVERY - toFight)) / FIGHT_EVERY), 3);
+    this.clock.setText(`TICK ${v.mapTick}  ${v.phase === 'clash' ? `FIGHT TICK ${v.fightTick}` : v.phase === 'map' ? `FIGHT IN ${toFight}  DRAW IN ${toDraw}` : ''}`);
+    if (v.phase === 'map') {
+      g.fillStyle(NIGHT).fillRect(108, 12, 96, 2);
+      g.fillStyle(GOLD).fillRect(108, 12, Math.round((96 * (FIGHT_EVERY - toFight)) / FIGHT_EVERY), 2);
+    }
     const s = this.session;
-    this.clock.setText(`TICK ${v.mapTick}  FIGHT IN ${v.phase === 'map' ? toFight : 0}  DRAW IN ${toDraw}${v.phase === 'clash' ? `  FIGHT TICK ${v.fightTick}` : ''}`);
-    this.speedButtons.forEach((b, i) => b.setSelected(i < SPEEDS.length ? !s.paused && s.speed === SPEEDS[i] : s.paused));
-    const orders = v.sides[this.me].orders;
+    this.speedButtons.forEach((b, i) => b.setSelected(i === 0 ? s.paused : !s.paused && s.speed === SPEEDS[i - 1]));
+
+    const aiming = this.mode.kind === 'card' && this.mode.source < 0 ? 'click the hero who plays it' : 'click its target';
     const hints: Record<Mode['kind'], string> = {
-      idle: `click a hero   S stance (${orders.stance})   R roam (${orders.roam})   U ult   space pause   hold alt for keywords`,
+      idle: '',
       roam: 'click a cell to roam to   esc cancels',
       ult: 'click a cell to aim the ultimate   esc cancels',
-      card: this.mode.kind === 'card' && this.mode.source < 0 ? 'click the hero who plays it   esc cancels' : 'click its target   esc cancels',
+      card: `${aiming}   esc cancels`,
     };
     this.hint.setText(hints[this.mode.kind].toUpperCase());
   }
 
-  // ---- the side panel -------------------------------------------------------------
-
-  private drawPanel(): void {
+  /** The hand along the bottom, in every phase; playable only while committing. */
+  private drawHand(p: Phaser.Input.Pointer): void {
     const v = this.v;
-    // While planning, steps only tick over to wait for commits: rebuild on what the player can see change.
     const me = v.sides[this.me];
-    const moment = v.phase === 'plan' ? [me.hand, me.plays, me.committed, v.sides[this.me === 0 ? 1 : 0].committed] : v.seq;
-    const key = JSON.stringify([moment, this.selected, this.mode, this.alt, this.hoverCard, [...this.discard], this.log]);
-    if (key === this.panelKey) return;
-    this.panelKey = key;
-    this.panel.removeAll(true);
-    const add: Adder = (o) => { this.panel.add(o); return o; };
-    this.roster(add);
-    if (v.phase === 'map' || v.phase === 'over') this.mapPanel(124, add);
-    else this.fightPanel(124, add);
-  }
+    const n = me.hand.length;
+    const step = n > 1 ? Math.min(CARD_W + 4, (HAND_SPAN - CARD_W) / (n - 1)) : 0;
+    const xs = me.hand.map((_, i) => Math.round(HAND_CX + (i - (n - 1) / 2) * step));
+    const aimingAt = this.mode.kind === 'card' ? this.mode.handIndex : -1;
+    // The topmost card under the pointer: later cards lie over earlier ones.
+    let hover = -1;
+    for (let i = n - 1; i >= 0; i--) {
+      const lift = i === aimingAt ? 6 : 0;
+      if (Math.abs(p.x - xs[i]!) <= CARD_W / 2 && p.y >= HAND_Y - CARD_H / 2 - lift && p.y <= H) { hover = i; break; }
+    }
+    if (this.log.isOpen && p.x < 308 && p.y > 162) hover = -1;
+    this.handHover = hover;
 
-  private roster(add: Adder): void {
-    const v = this.v;
-    v.heroes.filter((h) => h.side === this.me).forEach((h, i) => {
-      const y = 12 + i * 22;
-      const def = heroDef(h.id);
-      const row = add(this.add.zone(PANEL_X + 160, y + 6, 316, 21).setInteractive({ useHandCursor: true }));
-      row.on('pointerdown', () => { this.selected = h.uid; this.panelKey = ''; });
-      const bg = add(this.add.graphics());
-      bg.fillStyle(h.uid === this.selected ? DUSK : PLUM, 0.8).fillRect(PANEL_X, y - 4, 316, 20);
-      add(this.add.sprite(PANEL_X + 10, y + 14, heroKey(h.id, h.side), '0').setOrigin(heroOriginX(h.side), 1));
-      add(text(this, PANEL_X + 24, y - 1, def.name, GOLD));
-      add(text(this, PANEL_X + 24, y + 7, `${h.role}  ${Math.floor(h.xp / XP_UNIT)} xp${h.charge > 0 && def.ult.kind !== 'ascension' ? `  ${h.charge}*` : ''}`, MAUVE));
-      const max = maxHp(h);
-      bg.fillStyle(INK).fillRect(PANEL_X + 110, y, 82, 5);
-      bg.fillStyle(h.respawnAt >= 0 ? DUSK : TEAM[h.side].main).fillRect(PANEL_X + 111, y + 1, Math.ceil((80 * Math.max(0, h.hp)) / max), 3);
-      add(text(this, PANEL_X + 110, y + 7, `${Math.max(0, h.hp)}/${max}`, CREAM));
-      const status = h.respawnAt >= 0 ? `back in ${h.respawnAt - v.mapTick}` : h.retreating ? 'retreating' : h.roam >= 0 ? 'roaming' : h.fx.engagement >= 0 ? 'engaged' : '';
-      add(text(this, PANEL_X + 200, y - 1, h.stance, h.stance === 'aggressive' ? BLOOD : CREAM));
-      add(text(this, PANEL_X + 200, y + 7, status, MAUVE));
-      const ult = def.ult;
-      const ready = ult.kind === 'ascension' ? h.ascended : v.fightPhase >= h.ultReadyAt;
-      const label = ult.kind === 'ascension' ? (h.ascended ? 'ascended' : `asc ${h.charge}/${ult.charge}`) : ready ? 'ult ready' : `ult in ${h.ultReadyAt - v.fightPhase}`;
-      add(text(this, PANEL_X + 258, y - 1, label, ready ? VIOLET : DUSK));
+    this.hand.draw([me.hand, xs, this.planning, me.mana, aimingAt, [...this.discard], hover], (add) => {
+      me.hand.forEach((id, i) => {
+        if (i === hover) return; // drawn enlarged by the preview
+        const face = add(cardFace(this, id, this.me));
+        face.setPosition(xs[i]!, HAND_Y - (i === aimingAt ? 6 : 0));
+        const affordable = cardDef(id).cost <= me.mana;
+        face.setAlpha(this.discard.has(i) ? 0.3 : this.planning && !affordable ? 0.55 : 1);
+        if (this.discard.has(i)) add(centred(this, xs[i]!, HAND_Y + 20, 'discard', BLOOD));
+      });
     });
   }
 
-  private mapPanel(top: number, add: Adder): void {
+  /** The enlarged card: the hovered hand card in place, or a timeline card above the console. */
+  private drawPreview(): void {
+    const me = this.v.sides[this.me];
+    const fromHand = this.handHover >= 0 ? me.hand[this.handHover] : undefined;
+    const card = fromHand ?? this.timelineHover?.card;
+    const side = fromHand ? this.me : this.timelineHover?.side ?? this.me;
+    const n = me.hand.length;
+    const step = n > 1 ? Math.min(CARD_W + 4, (HAND_SPAN - CARD_W) / (n - 1)) : 0;
+    this.preview.draw([card, side, this.handHover, this.ctrl, n], (add) => {
+      if (!card) return;
+      const face = add(cardFace(this, card, side, { big: true, rules: this.ctrl, maxH: H - 22 }));
+      const h = face.height;
+      if (fromHand) {
+        const x = HAND_CX + (this.handHover - (n - 1) / 2) * step;
+        face.setPosition(Phaser.Math.Clamp(Math.round(x), BIG_W / 2 + 2, CON.x - BIG_W / 2 - 2), Math.round(H - 2 - h / 2));
+        const affordable = cardDef(card).cost <= me.mana;
+        if (this.planning && !affordable) add(centred(this, face.x, face.y + h / 2 - 6, 'not enough mana', MANA_LIGHT)).setDepth(1);
+      } else {
+        face.setPosition(CON.x + CON.w / 2, Math.round(Math.max(20 + h / 2, CON.y - 4 - h / 2)));
+      }
+      if (!this.ctrl) {
+        const tip = centred(this, face.x, face.y - h / 2 - 6, 'hold ctrl for the full rules', MAUVE);
+        add(this.add.graphics().fillStyle(INK, 0.85).fillRect(tip.x - tip.width / 2 - 3, tip.y - 5, tip.width + 6, 9));
+        add(tip);
+      }
+    });
+  }
+
+  /** Mana pips, five to a row. */
+  private pips(g: Phaser.GameObjects.Graphics, x: number, y: number, mana: number): void {
+    for (let i = 0; i < Math.min(mana, 20); i++) {
+      const px = x + (i % 10) * 6, py = y + Math.floor(i / 10) * 5;
+      g.fillStyle(INK).fillRect(px - 1, py - 1, 6, 5);
+      g.fillStyle(MANA).fillRect(px, py, 4, 3);
+      g.fillStyle(MANA_LIGHT).fillRect(px, py, 4, 1);
+    }
+  }
+
+  /** Bottom right: your mana and deck in the map phase; the initiative timeline and commit while fighting. */
+  private drawConsole(): void {
+    const v = this.v;
+    const me = v.sides[this.me];
+    const rival = v.sides[foe(this.me)];
+    const fighting = v.phase !== 'map' && v.phase !== 'over';
+    const moment = v.phase === 'plan' ? [me.plays, me.committed, rival.committed, v.rivalHand] : fighting ? [v.seq] : [me.hand.length, me.deck.length, me.discard.length, v.rivalHand, me.mana, rival.mana];
+    this.console.draw([v.phase, moment, this.planning, me.hand.length, me.mana], (add) => {
+      this.timelineHover = null;
+      const { x, y, w, h } = CON;
+      const g = add(this.add.graphics());
+      g.fillStyle(INK, 0.92).fillRect(x, y, w, h);
+      g.lineStyle(1, DUSK).strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+      add(text(this, x + 5, y + 5, `mana ${me.mana}`.toUpperCase(), MANA_LIGHT));
+      this.pips(g, x + 52, y + 5, me.mana);
+
+      if (!fighting) {
+        const rows = [
+          `hand ${me.hand.length}  deck ${me.deck.length}  discard ${me.discard.length}`,
+          `rival: hand ${v.rivalHand}  mana ${rival.mana}`,
+          `keeps ${CARDS_KEPT} cards between fights`,
+        ];
+        rows.forEach((r, i) => add(text(this, x + 5, y + 20 + i * 10, r.toUpperCase(), i === 0 ? CREAM : MAUVE)));
+        return;
+      }
+
+      const status = v.phase !== 'plan' ? 'initiative' : rival.committed ? 'rival has committed' : 'rival is thinking';
+      add(text(this, x + 5, y + 16, status.toUpperCase(), MAUVE));
+      // The timeline: your plays above the line, the rival's below, initiative 0 to 9.
+      const tx = x + 1 + 1, ty = y + 26, slot = 16;
+      const current = v.phase === 'resolve' ? (v.pending[0] ?? 10) : v.phase === 'clash' ? v.initiative : -1;
+      for (let i = 0; i < 10; i++) {
+        const sx = tx + i * slot;
+        g.fillStyle(i < current ? DUSK : PLUM).fillRect(sx, ty, slot - 1, 31);
+        g.fillStyle(INK).fillRect(sx, ty + 15, slot - 1, 1);
+        add(centred(this, sx + slot / 2, ty + 36, String(i), i === current ? GOLD : MAUVE));
+      }
+      for (const [side, row] of [[this.me, 0], [foe(this.me), 1]] as const) {
+        const perSlot = new Map<number, number>();
+        v.sides[side].plays.forEach((pl, index) => {
+          const ini = cardDef(pl.card).initiative;
+          const k = perSlot.get(ini) ?? 0;
+          perSlot.set(ini, k + 1);
+          const icon = add(this.add.image(tx + ini * slot + 4 + (k % 2) * 7, ty + row * 16 + 4 + Math.floor(k / 2) * 6, iconKey(pl.card, side)));
+          if (pl.cancelled) icon.setAlpha(0.35);
+          icon.setInteractive({ useHandCursor: side === this.me && this.planning });
+          icon.on('pointerover', () => { this.timelineHover = { card: pl.card, side }; });
+          icon.on('pointerout', () => { this.timelineHover = null; });
+          if (side === this.me && this.planning) icon.on('pointerdown', () => { this.timelineHover = null; this.session.submit({ type: 'unplay', index }); });
+        });
+      }
+      if (v.phase === 'plan') {
+        const over = me.hand.length - CARDS_KEPT;
+        if (this.planning && over > 0) add(text(this, x + 5, y + h - 21, `keeps ${CARDS_KEPT}: right-click to discard`.toUpperCase(), MAUVE));
+        add(button(this, x + w - 46, y + h - 10, 88, me.committed ? 'waiting...' : 'commit (enter)', () => this.commit())).setEnabled(this.planning);
+      }
+    });
+  }
+
+  /** Under your bars: orders for the selected hero, while the map runs. */
+  private drawOrders(): void {
     const v = this.v;
     const h = this.own(this.selected);
-    if (!h) {
-      add(text(this, PANEL_X + 4, top, 'select a hero to give orders', MAUVE));
-    } else {
+    const orders = v.sides[this.me].orders;
+    const map = v.phase === 'map';
+    const key = map && h ? [h.uid, h.stance, h.respawnAt >= 0, h.ultReadyAt, v.fightPhase, orders, this.mode.kind] : [map];
+    this.orders.draw(key, (add) => {
+      const x = 4, y = 22 + 5 * 27 + 4;
+      if (!map) return;
+      if (!h) {
+        add(text(this, x, y, 'click a hero\nto give orders'.toUpperCase(), MAUVE));
+        return;
+      }
       const def = heroDef(h.id);
-      const st = def.stats;
-      add(text(this, PANEL_X + 4, top, `${def.name}   dmg ${st.dmg}  hp ${st.hp}  res ${st.res}  spd ${st.spd}`, GOLD));
-      const lines: [string, string][] = [
-        [`map: ${def.map.name}`, `${def.map.text} every ${def.map.every} ticks.`],
-        [`fight: ${def.fight.name}`, `${def.fight.text} every ${def.fight.every} turns.`],
-        [`ultimate (${def.ult.kind}): ${def.ult.name}`, def.ult.text],
-      ];
-      lines.forEach(([a, b], i) => {
-        add(text(this, PANEL_X + 4, top + 12 + i * 18, a, CREAM));
-        add(this.add.bitmapText(PANEL_X + 4, top + 19 + i * 18, 'pixel', b.toUpperCase()).setTint(MAUVE).setMaxWidth(312));
-      });
-      const orders = v.sides[this.me].orders;
-      const y = top + 78;
-      const alive = h.respawnAt < 0 && v.phase === 'map';
-      add(button(this, PANEL_X + 50, y, 96, h.stance === 'passive' ? 'go aggressive' : 'go passive', () => this.orderStance())).setEnabled(alive && orders.stance > 0);
-      add(button(this, PANEL_X + 154, y, 96, 'roam', () => this.beginOrder('roam'))).setEnabled(alive && orders.roam > 0).setSelected(this.mode.kind === 'roam');
-      const command = def.ult.kind === 'command' && v.fightPhase >= h.ultReadyAt;
-      add(button(this, PANEL_X + 258, y, 96, def.ult.kind === 'command' ? def.ult.name : 'no command', () => this.beginOrder('ult')))
-        .setEnabled(alive && command).setSelected(this.mode.kind === 'ult');
-      add(text(this, PANEL_X + 4, y + 11, `orders left until the fight phase: ${orders.stance} stance, ${orders.roam} roam`, MAUVE));
-    }
-    const me = v.sides[this.me];
-    const rival = v.sides[this.me === 0 ? 1 : 0];
-    add(text(this, PANEL_X + 4, top + 108, `your hand ${me.hand.length}, deck ${me.deck.length}, mana ${me.mana}.  rival hand ${v.rivalHand}, mana ${rival.mana}`, CREAM));
-    me.hand.forEach((id, i) => {
-      const def = cardDef(id);
-      const x = PANEL_X + 4 + (i % 2) * 158, y = top + 122 + Math.floor(i / 2) * 9;
-      add(this.add.image(x + 4, y + 2, iconKey(id, this.me)));
-      add(text(this, x + 12, y, `${def.cost}/${def.initiative} ${def.name}`, CREAM));
+      const alive = h.respawnAt < 0;
+      add(text(this, x, y, `orders left: ${orders.stance} stance, ${orders.roam} roam`.toUpperCase(), MAUVE));
+      add(button(this, x + 48, y + 15, 96, h.stance === 'passive' ? 'go aggressive (s)' : 'go passive (s)', () => this.orderStance()))
+        .setEnabled(alive && orders.stance > 0);
+      add(button(this, x + 48, y + 31, 96, 'roam (r)', () => this.beginOrder('roam')))
+        .setEnabled(alive && orders.roam > 0).setSelected(this.mode.kind === 'roam');
+      if (def.ult.kind === 'command') {
+        add(button(this, x + 48, y + 47, 96, `${def.ult.name} (u)`, () => this.beginOrder('ult')))
+          .setEnabled(alive && v.fightPhase >= h.ultReadyAt).setSelected(this.mode.kind === 'ult');
+      }
     });
   }
 
-  /** The plan, reveal and clash screens share the timeline; planning adds the hand. */
-  private fightPanel(top: number, add: Adder): void {
-    const v = this.v;
-    const me = v.sides[this.me];
-    const rival = v.sides[this.me === 0 ? 1 : 0];
-    const planning = v.phase === 'plan' && !me.committed;
-    const g = add(this.add.graphics());
-    const status = v.phase !== 'plan' ? '' : rival.committed ? 'rival has committed' : `rival is thinking, ${v.rivalHand} cards`;
-    add(text(this, PANEL_X + 4, top - 2, `initiative     ${status}`, MAUVE));
-    for (let i = 0; i < Math.min(me.mana, 20); i++) g.fillStyle(VIOLET).fillRect(PANEL_X + 246 + (i % 10) * 7, top - 3 + Math.floor(i / 10) * 4, 5, 3);
-
-    // The timeline: own plays above the line, the rival's below, initiative 0 to 9.
-    const tx = PANEL_X + 10, ty = top + 8;
-    const current = v.phase === 'resolve' ? (v.pending[0] ?? 10) : v.phase === 'clash' ? v.initiative : -1;
-    for (let i = 0; i < 10; i++) {
-      const x = tx + i * 30;
-      g.fillStyle(i < current ? DUSK : PLUM).fillRect(x, ty, 28, 34);
-      g.fillStyle(INK).fillRect(x, ty + 16, 28, 1);
-      add(centred(this, x + 14, ty + 39, String(i), i === current ? GOLD : MAUVE));
-    }
-    for (const [side, row] of [[this.me, 0], [this.me === 0 ? 1 : 0, 1]] as const) {
-      const perSlot = new Map<number, number>();
-      v.sides[side].plays.forEach((p, index) => {
-        const ini = cardDef(p.card).initiative;
-        const k = perSlot.get(ini) ?? 0;
-        perSlot.set(ini, k + 1);
-        const icon = add(this.add.image(tx + ini * 30 + 7 + (k % 3) * 8, ty + row * 17 + 7 + Math.floor(k / 3) * 6, iconKey(p.card, side)));
-        icon.setInteractive({ useHandCursor: side === this.me && planning });
-        icon.on('pointerover', () => { this.hoverCard = p.card; });
-        if (side === this.me && planning) icon.on('pointerdown', () => this.session.submit({ type: 'unplay', index }));
+  /** The hotkeys, folded behind the ? in the corner. */
+  private drawHelp(): void {
+    const open = this.helpPinned || this.helpHover;
+    this.help.draw([open], (add) => {
+      if (!open) return;
+      const rows: [string, string][] = [
+        ['click', 'select a hero or its bar'],
+        ['s', 'toggle passive / aggressive'],
+        ['r', 'roam to a cell'],
+        ['u', 'aim a command ultimate'],
+        ['click card', 'play it (commit phase)'],
+        ['right-click', 'mark a card to discard'],
+        ['enter', 'commit your cards'],
+        ['esc', 'cancel aiming'],
+        ['hold ctrl', 'full rules: card or hero'],
+        ['space', 'pause'],
+        ['1-4', 'speed'],
+        ['l', 'toggle the log'],
+      ];
+      const w = 196, hgt = rows.length * 9 + 14;
+      const [x, y] = [4, H - 20 - hgt];
+      add(this.add.graphics().fillStyle(INK, 0.95).fillRect(x, y, w, hgt).lineStyle(1, DUSK).strokeRect(x + 0.5, y + 0.5, w - 1, hgt - 1));
+      add(text(this, x + 5, y + 4, 'HOTKEYS', GOLD));
+      rows.forEach(([k, what], i) => {
+        add(text(this, x + 5, y + 14 + i * 9, k.toUpperCase(), CREAM));
+        add(text(this, x + 58, y + 14 + i * 9, what.toUpperCase(), MAUVE));
       });
-    }
-
-    if (v.phase === 'plan') {
-      me.hand.forEach((id, i) => {
-        const face = add(cardFace(this, id, this.me, this.alt));
-        face.setPosition(PANEL_X + 4 + CARD_W / 2 + (i % 5) * (CARD_W + 10), top + 58 + CARD_H / 2 + Math.floor(i / 5) * (CARD_H + 4));
-        const affordable = cardDef(id).cost <= me.mana;
-        const aiming = this.mode.kind === 'card' && this.mode.handIndex === i;
-        face.setAlpha(this.discard.has(i) ? 0.3 : planning && !affordable ? 0.5 : 1);
-        if (aiming) face.y -= 4;
-        face.setInteractive({ useHandCursor: planning });
-        face.on('pointerover', () => { this.hoverCard = id; });
-        face.on('pointerdown', (p: Phaser.Input.Pointer) => {
-          if (!planning) return;
-          if (p.rightButtonDown()) {
-            if (this.discard.has(i)) this.discard.delete(i); else this.discard.add(i);
-            this.panelKey = '';
-          } else if (affordable) this.pickCard(i);
-        });
-      });
-      const over = me.hand.length - CARDS_KEPT;
-      if (planning && over > 0) add(text(this, PANEL_X + 4, H - 14, `keeps ${CARDS_KEPT}: right-click to discard`, MAUVE));
-      add(button(this, PANEL_X + 262, H - 12, 100, me.committed ? 'waiting...' : 'commit (enter)', () => this.commit())).setEnabled(planning);
-    } else {
-      this.log.forEach((line, i) => add(text(this, PANEL_X + 4, top + 58 + i * 10, line, i === this.log.length - 1 ? CREAM : MAUVE)));
-    }
-
-    if (this.alt && this.hoverCard) {
-      const def = cardDef(this.hoverCard);
-      const box = add(this.add.graphics());
-      box.fillStyle(INK, 0.9).fillRect(6, 252, 288, 44);
-      add(text(this, 10, 255, `${def.name}: cost ${def.cost}, initiative ${def.initiative}`, GOLD));
-      def.keywords.forEach((k, i) => add(this.add.bitmapText(10, 264 + i * 8, 'pixel', `${k}: ${KEYWORD_TEXT[k]}`.toUpperCase()).setTint(VIOLET).setMaxWidth(280)));
-    }
+    });
   }
 
   // ---- the end -----------------------------------------------------------

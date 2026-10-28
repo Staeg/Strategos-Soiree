@@ -1,4 +1,5 @@
 import type { HeroId } from '@soiree/sim';
+import type { Signature } from './palette.ts';
 
 /**
  * Heroes are a shared body plus a hand-drawn costume. Each frame is 20x16,
@@ -43,70 +44,99 @@ export interface Costume {
 }
 
 /**
- * One costume per hero, each built around a single signature colour so the
- * cast stays readable at map scale. The team livery (t d l) always shows
+ * Every hero owns a colour pair nobody else wears, plus a small accent: see
+ * "Placeholder art" in docs/heroes-draft.md. The pairs are spread round the
+ * wheel, clear of the two team liveries (teal and rose), and where two
+ * heroes lean on the same hue their partners and values pull them apart.
+ */
+export const SIGNATURES: Record<HeroId, Signature> = {
+  // Flame orange over ivory wax, a yellow heart to the flame.
+  tallowDuchess: [0xf0882a, 0xeee2c0, 0xffdc5e],
+  // Verdigris sundial, bronze fittings, a glint of noon.
+  gnomon: [0x72ad48, 0x9a6634, 0xf4d46c],
+  // Deep violet night, a silver crescent, white stars.
+  vespertine: [0x4b2689, 0xc5cae8, 0xfff4c4],
+  // Carrion-brown feathers, blood-red beads, a bone beak.
+  carrionAbacus: [0x5e3e2a, 0xd8403a, 0xe6d7b0],
+  // Pale chartreuse luna wings, lavender eyespots, lantern glow.
+  mothTenor: [0xcfdc62, 0x9677d6, 0xffe39a],
+  // Absence: pure black and pure white, nothing between.
+  lacuna: [0x07050b, 0xffffff, 0x8f8f96],
+  // Lighthouse scarlet and whitewash, a yellow lamp.
+  saintHalyard: [0xd2383a, 0xf3efe6, 0xffe066],
+  // Wine burgundy in a bottle-green glass.
+  vintnerGhast: [0x8c1c46, 0x3f803f, 0xb6e09e],
+  // Sea-blue oilskin and a carved ivory tusk.
+  scrimshander: [0x2d62aa, 0xeee2c2, 0x9fc6e8],
+  // Polished brass on black iron, a pale saint's halo.
+  brassReliquary: [0xd2a23a, 0x41454f, 0xfff1aa],
+};
+
+/**
+ * One costume per hero, drawn in its signature colours (1 2 3) so the cast
+ * stays readable at map scale. The team livery (t d l) always shows
  * somewhere on the body.
  */
 export const COSTUMES: Record<HeroId, Costume> = {
   // A candle in a wax gown, flame for a head.
   tallowDuchess: {
-    wear: [{ x: 6, y: 0, rows: ['.g..', 'gag.', '.a..'] }, { x: 5, y: 13, rows: ['cccccc', 'c.cc.c'] }],
-    idle: [{ x: 12, y: 6, rows: ['.g.', '.a.', '.c.', '.c.', 'ccc'] }],
-    strike: [{ x: 11, y: 6, rows: ['...gg', '.agga', 'aagga', '.agg.'] }],
+    wear: [{ x: 6, y: 0, rows: ['.1..', '131.', '.3..'] }, { x: 5, y: 13, rows: ['222222', '2.22.2'] }],
+    idle: [{ x: 12, y: 6, rows: ['.1.', '.3.', '.2.', '.2.', '222'] }],
+    strike: [{ x: 11, y: 6, rows: ['...11', '.3113', '33113', '.311.'] }],
   },
   // A sundial plate on his back, its blade over one shoulder.
   gnomon: {
-    wear: [{ x: 1, y: 6, rows: ['.MM.', 'MmgM', 'MmmM', '.MM.'] }, { x: 2, y: 3, rows: ['g..', '.g.', '..g'] }],
-    idle: [{ x: 12, y: 3, rows: ['.h.', '.m.', '.m.', '.m.', '.m.', 'MMM', '.w.'] }],
-    strike: [{ x: 11, y: 9, rows: ['Mmmmmmmh'] }],
+    wear: [{ x: 1, y: 6, rows: ['.22.', '2132', '2112', '.22.'] }, { x: 2, y: 3, rows: ['3..', '.3.', '..3'] }],
+    idle: [{ x: 12, y: 3, rows: ['.h.', '.m.', '.m.', '.m.', '.m.', '222', '.1.'] }],
+    strike: [{ x: 11, y: 9, rows: ['2mmmmmmh'] }],
   },
   // A hole in the world full of stars, a crescent mask for a face.
   vespertine: {
-    wear: [{ x: 6, y: 4, rows: ['nnnn', 'nnhh', 'nnnh'] }, { x: 5, y: 8, rows: ['.nnnn.', 'nnhnnn', 'nnnnhn', '.nhnn.'] }],
-    idle: [{ x: 12, y: 9, rows: ['h', 'm'] }],
-    strike: [{ x: 12, y: 9, rows: ['mmh'] }],
+    wear: [{ x: 6, y: 4, rows: ['1111', '1122', '1112'] }, { x: 5, y: 8, rows: ['.1111.', '113111', '111131', '.1311.'] }],
+    idle: [{ x: 12, y: 9, rows: ['3', '2'] }],
+    strike: [{ x: 12, y: 9, rows: ['223'] }],
   },
-  // Black ruff, hooked beak, an abacus of red beads on his back.
+  // A brown ruff, a hooked bone beak, an abacus of red beads on his back.
   carrionAbacus: {
-    wear: [{ x: 5, y: 7, rows: ['xxxxxx'] }, { x: 10, y: 5, rows: ['gg', '.a'] }, { x: 0, y: 5, rows: ['wwww', 'wrhw', 'wrrw', 'whrw', 'wwww'] }],
-    idle: [{ x: 12, y: 10, rows: ['x.', 'xx'] }],
-    strike: [{ x: 12, y: 8, rows: ['xxx.', '..xx', 'xxx.'] }],
+    wear: [{ x: 5, y: 7, rows: ['111111'] }, { x: 10, y: 5, rows: ['33', '.3'] }, { x: 0, y: 5, rows: ['1111', '1231', '1221', '1321', '1111'] }],
+    idle: [{ x: 12, y: 10, rows: ['1.', '11'] }],
+    strike: [{ x: 12, y: 8, rows: ['111.', '..11', '111.'] }],
   },
   // Dusty wings and antennae, a lantern held out.
   mothTenor: {
-    wear: [{ x: 5, y: 0, rows: ['y....y', '.y..y.', '..yy..'] }, { x: 0, y: 6, rows: ['..yyy', '.yyay', 'yyyyy', '.yyy.', '..y..'] }, { x: 8, y: 5, rows: ['a.a'] }],
-    idle: [{ x: 12, y: 6, rows: ['.w.', 'ggg', 'gag', 'ggg'] }],
-    strike: [{ x: 12, y: 2, rows: ['.g.', 'gag', 'ggg', '.w.', '.w.'] }],
+    wear: [{ x: 5, y: 0, rows: ['1....1', '.1..1.', '..11..'] }, { x: 0, y: 6, rows: ['..111', '.1121', '11111', '.111.', '..1..'] }, { x: 8, y: 5, rows: ['2.2'] }],
+    idle: [{ x: 12, y: 6, rows: ['.w.', '333', '3h3', '333'] }],
+    strike: [{ x: 12, y: 2, rows: ['.3.', '3h3', '333', '.w.', '.w.'] }],
   },
   // White gloves and a collar around nothing.
   lacuna: {
-    wear: [{ x: 6, y: 4, rows: ['xxxx', 'xxxx', 'xxxx'] }, { x: 5, y: 7, rows: ['hhhhhh'] }],
-    idle: [{ x: 12, y: 8, rows: ['hh', 'hh'] }],
-    strike: [{ x: 12, y: 7, rows: ['..hh', 'hhhh', '..hh'] }],
+    wear: [{ x: 6, y: 4, rows: ['1111', '1111', '1111'] }, { x: 5, y: 7, rows: ['222222'] }],
+    idle: [{ x: 12, y: 8, rows: ['22', '22'] }],
+    strike: [{ x: 12, y: 7, rows: ['..22', '2222', '..22'] }],
   },
-  // A lighthouse lantern for a head.
+  // A striped lighthouse lantern for a head, a banded mast in hand.
   saintHalyard: {
-    wear: [{ x: 5, y: 2, rows: ['.MMMM.', 'MggggM', 'MgaagM', 'MggggM', '.MMMM.'] }],
-    idle: [{ x: 12, y: 2, rows: ['g', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w', 'w'] }],
-    strike: [{ x: 11, y: 3, rows: ['.gggg', 'gcccc', '.gggg'] }],
+    wear: [{ x: 5, y: 2, rows: ['.1111.', '133331', '13hh31', '133331', '.2222.'] }],
+    idle: [{ x: 12, y: 2, rows: ['3', '1', '2', '1', '2', '1', '2', '1', '2', '1', '2'] }],
+    strike: [{ x: 11, y: 3, rows: ['.3333', '3hhhh', '.3333'] }],
   },
-  // A wine-red phantom in a tailcoat, carafe in hand.
+  // A wine-red phantom in a tailcoat, a green carafe in hand.
   vintnerGhast: {
-    wear: [{ x: 6, y: 4, rows: ['qqqq', 'qqoq', 'qqqq'] }, { x: 5, y: 13, rows: ['.qqqq.', '..qq..'] }, { x: 4, y: 11, rows: ['R', 'R'] }],
-    idle: [{ x: 12, y: 6, rows: ['.c.', '.c.', 'cRc', 'RRR', '.R.'] }],
-    strike: [{ x: 12, y: 5, rows: ['RRc.', 'RRRc', '...R', '...R'] }],
+    wear: [{ x: 6, y: 4, rows: ['1111', '11h1', '1111'] }, { x: 5, y: 13, rows: ['.1111.', '..11..'] }, { x: 4, y: 11, rows: ['2', '2'] }],
+    idle: [{ x: 12, y: 6, rows: ['.3.', '.2.', '212', '111', '.1.'] }],
+    strike: [{ x: 12, y: 5, rows: ['112.', '1112', '...1', '...1'] }],
   },
   // An oilskin hood and a carved tusk harpoon.
   scrimshander: {
-    wear: [{ x: 5, y: 2, rows: ['.eeee.', 'eeeeee', 'e....e'] }],
-    idle: [{ x: 13, y: 0, rows: ['h', 'y', 'y', 'y', 'y', 'y', 'y', 'y', 'y', 'y', 'y', 'y', 'y'] }],
-    strike: [{ x: 10, y: 9, rows: ['yyyyyyyyyh'] }],
+    wear: [{ x: 5, y: 2, rows: ['.1111.', '111111', '1....1'] }, { x: 5, y: 12, rows: ['11', '11'] }],
+    idle: [{ x: 13, y: 0, rows: ['h', '2', '2', '3', '2', '2', '3', '2', '2', '3', '2', '2', '2'] }],
+    strike: [{ x: 10, y: 9, rows: ['22322322h'] }],
   },
-  // A little saint riding a bronze mortar on cart wheels.
+  // A little saint riding a brass mortar on iron cart wheels.
   brassReliquary: {
-    wear: [{ x: 5, y: 0, rows: ['.gggg.', 'g....g'] }, { x: 3, y: 11, rows: ['bbbbbbbbb', 'bbbbbbbbb', '.MM...MM.', '.MM...MM.'] }],
-    idle: [{ x: 11, y: 9, rows: ['bbbb', 'bbbb'] }],
-    strike: [{ x: 11, y: 8, rows: ['.....a', 'bbbbaa', 'bbbb.a'] }],
+    wear: [{ x: 5, y: 0, rows: ['.3333.', '3....3'] }, { x: 3, y: 11, rows: ['111111111', '111111111', '.22...22.', '.22...22.'] }],
+    idle: [{ x: 11, y: 9, rows: ['1111', '1111'] }],
+    strike: [{ x: 11, y: 8, rows: ['.....3', '111133', '1111.3'] }],
   },
 };
 

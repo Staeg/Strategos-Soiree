@@ -12,6 +12,10 @@ export const CREAM = 0xf4e9d8;
 export const LEAF = 0x7fc06a;
 export const VIOLET = 0xa77be0;
 export const BLOOD = 0xc2414b;
+/** Mana is the one cold colour in the hand: cost gems and pips. */
+export const MANA = 0x4a8fe8;
+export const MANA_LIGHT = 0xa6cdff;
+export const MANA_DARK = 0x23457e;
 
 export const TEAM = [
   { main: 0x47b5a6, dark: 0x24686a, light: 0x9be3d3 },
@@ -20,16 +24,23 @@ export const TEAM = [
 
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 
-/** Glyph -> colour for hand-drawn sprites. `t d l` follow the team livery. */
-export function inks(side: Side): Record<string, string> {
+/**
+ * Glyph -> colour for hand-drawn sprites. `t d l` follow the team livery;
+ * `1 2 3` are the wearer's signature colours, when there is a wearer.
+ */
+export function inks(side: Side, signature?: Signature): Record<string, string> {
   const team = TEAM[side];
   return {
     o: hex(INK), s: '#e3b08f', k: '#b47c64',
     t: hex(team.main), d: hex(team.dark), l: hex(team.light),
     m: '#b9c3cf', M: '#5d6778', w: '#8a5a3b', g: hex(GOLD), c: hex(CREAM),
     h: '#ffffff', p: hex(VIOLET), P: '#5b3d8c', L: hex(LEAF), D: hex(DUSK), r: hex(BLOOD),
-    a: hex(AMBER), b: '#b07a3c', e: '#5d7e93', n: '#262052', q: '#eaa3bd', R: '#7d2341', x: '#07050b', y: '#efe3c2',
+    a: hex(AMBER), x: '#07050b',
+    ...(signature && { 1: hex(signature[0]), 2: hex(signature[1]), 3: hex(signature[2]) }),
   };
 }
+
+/** A hero's colours, most to least prominent: the main mass, the counter-colour, a small accent. */
+export type Signature = readonly [number, number, number];
 
 export const css = hex;

@@ -14,6 +14,37 @@ half uncanny. Each one is a single strong silhouette on the 20×16 frame with
 readable on a hex map. Several are not people at all (a bell, a void between
 two gloves, a pair of twins counted as one hero).
 
+### Placeholder art
+
+Until real sprites arrive, every hero is drawn from code
+(`packages/client/src/art/heroes.ts`), and the one rule for it is:
+
+- **Make the characters as visually distinct as possible.** Each hero owns a
+  *signature*: a main colour, a counter-colour and a small accent, chosen so
+  that no two heroes share a pair. Spread the main colours round the wheel;
+  where two heroes must lean on the same hue, separate them by value (light
+  against dark) or by a clashing partner. Keep clear of the two team
+  liveries, teal and rose, which every body already wears on its torso.
+- Silhouette carries as much as colour: a head that is not a head (a flame,
+  a lantern, a void), a prop held out from the body, something on the back.
+- The signature is reused wherever the hero appears outside the board, such
+  as the edge of its bar in the match HUD, so a colour always means one hero.
+
+| Hero | Main | Counter | Accent |
+|------|------|---------|--------|
+| The Tallow Duchess | flame orange | ivory wax | flame yellow |
+| Gnomon | verdigris green | bronze | noon gold |
+| Vespertine | deep violet | silver crescent | star white |
+| Carrion Abacus | carrion brown | blood-red beads | bone |
+| Moth Tenor | pale chartreuse | lavender eyespots | lantern glow |
+| Lacuna | black | white | grey |
+| Saint Halyard | lighthouse scarlet | whitewash | lamp yellow |
+| Vintner Ghast | wine burgundy | bottle green | glass highlight |
+| Scrimshander | sea-blue oilskin | ivory tusk | pale sea |
+| Brass Reliquary | polished brass | black iron | halo |
+
+New heroes pick an unused pair before anything else is drawn.
+
 ## Conventions the cards assume
 
 These fill gaps in the match design. They are the bits the engine and the
@@ -119,7 +150,7 @@ fight ends up hitting it.
 `HP 1150 · DMG 120 · RES 10 · SPD 9`
 
 *Look:* a tall candle in a pale wax gown that drips as she walks, a small
-flame for a head. Ivory and amber; the flame flickers between two frames.
+flame for a head. Flame orange and ivory; the flame flickers between two frames.
 
 *Plays like:* burns her own wave and her own health for power, trusting her
 ultimate to keep her standing.
@@ -144,7 +175,7 @@ ultimate to keep her standing.
 
 *Look:* a lanky knight with a round sundial plate across his back, the blade
 of the dial jutting over one shoulder. A long black shadow sprite trails him
-in a fixed direction regardless of where he faces. Bone white and slate.
+in a fixed direction regardless of where he faces. Verdigris and bronze.
 
 *Plays like:* a duelist who wants clean one-on-ones and punishes fast heroes.
 
@@ -161,7 +192,7 @@ in a fixed direction regardless of where he faces. Bone white and slate.
 |---|---|---|---|---|
 | High Noon | 2 | 5 | Engage (1, 50) | One target only: nobody else can Join this engagement. |
 | Hour Hand | 1 | 2 | Tactic | Gnomon takes his first turn on the first tick of his engagement, whatever his SPD. |
-| Shadow Step | 2 | 3 | — | Gnomon steps into his shadow hex (out of reach of Engages measured from his old hex). |
+| Shadow Step | 2 | 3 | — | Gnomon steps one lane cell ahead, into the hex his Long Shadow covers (out of reach of Engages measured from his old hex). |
 
 ### Mother Sprue
 `HP 1300 · DMG 85 · RES 25 · SPD 7`
@@ -239,7 +270,7 @@ overstay in lane.
 
 *Look:* a slender human outline that is a hole in the world, showing a
 starfield that twinkles; only a pale crescent mask floats where the face
-would be. Deep indigo with white single-pixel stars.
+would be. Deep violet with white single-pixel stars.
 
 *Plays like:* the reason fog of war matters. You know she's coming; you don't
 know where.
@@ -262,8 +293,8 @@ know where.
 ### Carrion Abacus
 `HP 850 · DMG 140 · RES 10 · SPD 14`
 
-*Look:* a lean vulture-man in a black frock, an enormous abacus strapped to
-his back whose red beads slide as he scores. Dusty black and blood red.
+*Look:* a lean vulture-man in a brown frock, an enormous abacus strapped to
+his back whose red beads slide as he scores. Carrion brown and blood red.
 
 *Plays like:* steals from lanes, counts every death, and arrives when someone
 is already hurt.
@@ -333,7 +364,8 @@ part of the board.
 `HP 850 · DMG 80 · RES 15 · SPD 13`
 
 *Look:* a tall moth in a mantle of dusty wings, feathered antennae, holding a
-lantern; two ember dots for eyes. Ivory and pale gold, a faint dust trail.
+lantern; two lavender eyespots on the wings. Pale chartreuse and lavender, a
+faint dust trail.
 
 *Plays like:* the wave in mid slowly becomes his. Fights against him turn on
 themselves.
@@ -384,7 +416,8 @@ your opponent.
 `HP 1000 · DMG 60 · RES 30 · SPD 9`
 
 *Look:* a broad keeper in an oilskin coat, a glass lantern for a head whose
-beam sweeps around the hex. Navy and lamp yellow.
+beam sweeps around the hex. Lighthouse scarlet and white stripes, a yellow
+lamp.
 
 *Plays like:* nobody on her team dies alone, and nothing bot goes unseen.
 
@@ -405,7 +438,7 @@ beam sweeps around the hex. Navy and lamp yellow.
 `HP 850 · DMG 70 · RES 15 · SPD 11`
 
 *Look:* a translucent phantom in a waiter's tailcoat, a carafe in one hand,
-a tray floating at its shoulder. Wine red and spectral pink.
+a tray floating at its shoulder. Wine burgundy and bottle green.
 
 *Plays like:* pours the wave into her carry. Strong sustain, a weaker lane.
 
@@ -496,8 +529,8 @@ ahead.
 `HP 800 · DMG 90 · RES 15 · SPD 10`
 
 *Look:* a hunched figure in whale-oil leathers carrying a carved tusk
-harpoon; the tusk visibly fills with etched lines as she grows. Ivory and
-grey-blue.
+harpoon; the tusk visibly fills with etched lines as she grows. Sea-blue
+and ivory.
 
 *Plays like:* weak early, a monster late. The opponent has to end it before
 the Masterwork.
@@ -540,7 +573,7 @@ bad engages.
 `HP 850 · DMG 135 · RES 15 · SPD 6`
 
 *Look:* a small saint statue riding a bronze mortar on cart wheels, a wisp of
-incense smoke from the barrel. Bronze and smoke grey.
+incense smoke from the barrel. Polished brass on black iron.
 
 *Plays like:* slow and immobile, but every tower in reach is on a clock.
 
