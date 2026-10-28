@@ -1,10 +1,11 @@
 import Phaser from 'phaser';
 import {
-  createAgent, heroDef, HERO_IDS, LANE_NAMES, ROLE_LANE, ROLES,
+  heroDef, HERO_IDS, LANE_NAMES, ROLE_LANE, ROLES,
   type Difficulty, type HeroId, type Role, type Side,
 } from '@soiree/sim';
 import { heroKey, heroOriginX } from '../art/forge.ts';
 import { CREAM, GOLD, MAUVE, TEAM } from '../art/palette.ts';
+import { autosaving } from '../save.ts';
 import { LocalSession } from '../session.ts';
 import { backdrop, button, centred, clip, LINE_H, text, W, wrap } from '../ui.ts';
 
@@ -174,7 +175,7 @@ export class Lineup extends Phaser.Scene {
     const seed = (Date.now() ^ (Math.random() * 0x7fffffff)) >>> 0;
     const teams: [HeroId[], HeroId[]] = [this.pairs.map((p) => this.partner(p, 0)), this.pairs.map((p) => this.partner(p, 1))];
     remember(teams[0]);
-    this.scene.start('match', { session: new LocalSession(seed, createAgent(this.difficulty, seed ^ 0x5eed), 0, teams) });
+    this.scene.start('match', { session: autosaving(new LocalSession({ seed, difficulty: this.difficulty, side: 0, teams })) });
   }
 }
 

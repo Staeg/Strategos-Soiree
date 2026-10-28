@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import { DIFFICULTIES, HERO_IDS, type Difficulty } from '@soiree/sim';
 import { heroKey, heroOriginX } from '../art/forge.ts';
 import { GOLD, MAUVE } from '../art/palette.ts';
+import { autosaving, loadAutosave } from '../save.ts';
+import { LocalSession } from '../session.ts';
 import { backdrop, button, centred, W } from '../ui.ts';
 
 const BLURB: Record<Difficulty, string> = {
@@ -30,5 +32,12 @@ export class Title extends Phaser.Scene {
       const b = button(this, W / 2 + (i - (DIFFICULTIES.length - 1) / 2) * 110, 300, 100, d, () => this.scene.start('lineup', { difficulty: d }));
       b.on('pointerover', () => hint.setText(BLURB[d].toUpperCase()));
     });
+
+    const save = loadAutosave();
+    if (save) {
+      const { mapTick, fightPhase } = save.state;
+      const b = button(this, W / 2, 278, 100, 'continue', () => this.scene.start('match', { session: autosaving(LocalSession.resume(save)) }));
+      b.on('pointerover', () => hint.setText(`the ${save.setup.difficulty} match, from tick ${mapTick}${fightPhase ? ` (fight ${fightPhase})` : ''}`.toUpperCase()));
+    }
   }
 }
