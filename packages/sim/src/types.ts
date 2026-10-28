@@ -255,6 +255,8 @@ export type GameEvent =
   | { type: 'draw'; side: Side }
   | { type: 'order'; side: Side; uid: number; order: 'stance' | 'roam' | 'ult' }
   | { type: 'minions'; cell: number; side: Side; died: number }
+  /** `n` minions of `side` walked from index `pos` of `lane` to the next cell along it. */
+  | { type: 'march'; lane: LaneId; pos: number; side: Side; n: number }
   | { type: 'hurt'; uid: number; amount: number; by: 'minion' | 'tower' | 'creep' | 'card' | 'hero' }
   | { type: 'heal'; uid: number; amount: number }
   | { type: 'structure'; index: number; amount: number }

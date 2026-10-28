@@ -58,6 +58,10 @@ function eventVisible(s: MatchState, e: GameEvent, side: Side, visible: boolean[
   const hero = (uid: number) => heroSeen(s, side, s.heroes[uid]!, visible);
   switch (e.type) {
     case 'minions': return visible[e.cell] === true;
+    case 'march': {
+      const next = e.pos + (e.side === 0 ? 1 : -1);
+      return e.side === side || visible[laneCell(e.lane, e.pos)] === true || visible[laneCell(e.lane, next)] === true;
+    }
     case 'hurt': case 'heal': case 'ability': case 'ascend': case 'act':
       return hero(e.uid);
     case 'order': return e.side === side;

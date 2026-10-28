@@ -23,6 +23,8 @@ export function forgeAll(scene: Phaser.Scene): void {
 }
 
 export const heroKey = (id: string, side: Side) => `hero-${id}-${side}`;
+export const FACE_W = 14;
+export const FACE_H = 12;
 export const heroOriginX = (side: Side) => (side === 0 ? BODY_CX : FRAME_W - BODY_CX) / FRAME_W;
 
 function canvas(scene: Phaser.Scene, key: string, w: number, h: number, draw: (ctx: CanvasRenderingContext2D) => void) {
@@ -57,6 +59,8 @@ function forgeHero(scene: Phaser.Scene, id: HeroId, side: Side): void {
     });
   });
   frames.forEach((_, f) => tex.add(String(f), 0, f * FRAME_W, 0, FRAME_W, FRAME_H));
+  // A head-and-shoulders crop of the walking frame, for card badges.
+  tex.add('face', 0, side === 0 ? BODY_CX - 6 : FRAME_W - BODY_CX - 8, 0, FACE_W, FACE_H);
   scene.anims.create({ key: `${key}-walk`, frames: [{ key, frame: '0' }, { key, frame: '1' }], frameRate: 6, repeat: -1 });
   scene.anims.create({ key: `${key}-idle`, frames: [{ key, frame: '0' }], frameRate: 1 });
   scene.anims.create({ key: `${key}-strike`, frames: [{ key, frame: '2' }, { key, frame: '2' }, { key, frame: '0' }], frameRate: 10 });

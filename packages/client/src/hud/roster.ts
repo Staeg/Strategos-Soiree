@@ -3,21 +3,22 @@ import {
   XP_UNIT, foe, heroDef, maxHp, stats,
   type Hero, type MatchView, type Side,
 } from '@soiree/sim';
+import { heroKey, heroOriginX } from '../art/forge.ts';
 import { SIGNATURES } from '../art/heroes.ts';
 import { BLOOD, CREAM, DUSK, GOLD, INK, MAUVE, NIGHT, PLUM, TEAM, VIOLET } from '../art/palette.ts';
 import { CHARGE_NAME } from '../rules.ts';
-import { centred, LINE_H, text, W, wrap } from '../ui.ts';
+import { centred, LINE_H, say, text, W, wrap } from '../ui.ts';
 
 /** Collapsed and popped-out bar widths, the row pitch, and where the first row sits. */
 const NARROW = 108;
-const WIDE = 248;
+const WIDE = 268;
 const ROW_H = 24;
 const PITCH = 27;
 const TOP = 22;
 /** Popping out takes this long, in ms. */
 const POP_MS = 110;
 /** Health bar length. */
-const BAR = 76;
+const BAR = 56;
 
 interface Row {
   uid: number;
@@ -25,7 +26,7 @@ interface Row {
   /** 0 collapsed .. 1 popped out. */
   open: number;
   g: Phaser.GameObjects.Graphics;
-  name: Phaser.GameObjects.BitmapText;
+  icon: Phaser.GameObjects.Image;
   clock: Phaser.GameObjects.BitmapText;
   unknown: Phaser.GameObjects.BitmapText;
   lines: Phaser.GameObjects.BitmapText[];
@@ -37,8 +38,9 @@ interface Sighting { hero: Hero; tick: number }
 
 /**
  * The two casts down the sides of the screen: yours on the left, the
- * rival's on the right. At rest a bar shows a name, a health bar and the
- * ultimate's clock; hovered, it slides out towards the board with the rest.
+ * rival's on the right. At rest a bar shows the hero's figure, a health bar
+ * and the ultimate's clock; hovered, it slides out towards the board with
+ * the name and the rest.
  * Rivals out of sight are greyed and show only what was last seen of them.
  */
 export class Roster {
@@ -47,6 +49,8 @@ export class Roster {
   private detail: Phaser.GameObjects.Container | null = null;
   private detailKey = '';
   hovered = -1;
+  /** A hero to call out, such as the owner of the card under the pointer, or -1. */
+  highlight = -1;
 
   constructor(private readonly scene: Phaser.Scene, private readonly me: Side) {}
 
@@ -88,7 +92,7 @@ export class Roster {
       const r: Row = {
         uid: h.uid, side: h.side, open: 0,
         g: s.add.graphics().setDepth(1100),
-        name: text(s, 0, 0, '', GOLD).setDepth(1101),
+        icon: s.add.image(0, 0, heroKey(h.id, h.side), '0').setOrigin(heroOriginX(h.side), 1).setDepth(1101),
         clock: centred(s, 0, 0, '', CREAM).setDepth(1102),
         unknown: centred(s, 0, 0, '?', CREAM).setDepth(1102),
         lines: [0, 1, 2].map(() => text(s, 0, 0, '', MAUVE).setDepth(1101)),
@@ -127,30 +131,38 @@ export class Roster {
     g.fillStyle(second, dim ? 0.4 : 1).fillRect(mine ? near + 1 : near - 4, box.y + box.height - 5, 3, 4);
     if (r.uid === selected) g.lineStyle(1, CREAM, 0.5 + 0.3 * Math.sin(time / 180)).strokeRect(box.x + 0.5, box.y + 0.5, box.width - 1, box.height - 1);
 
-    // Name, health and the ult clock live in the hanging end, which never moves.
-    const inner = mine ? near + 7 : near - 7 - BAR;
-    r.name.setText(def.name.toUpperCase()).setPosition(inner, box.y + 4).setTint(dim ? MAUVE : GOLD);
+    if (r.uid === this.highlight) {
+      const pulse = 0.6 + 0.4 * Math.sin(time / 120);
+      g.lineStyle(1, GOLD, pulse).strokeRect(box.x - 0.5, box.y - 0.5, box.width + 1, box.height + 1);
+      g.lineStyle(1, GOLD, pulse * 0.4).strokeRect(box.x - 1.5, box.y - 1.5, box.width + 3, box.height + 3);
+    }
+
+    // The figure, health and the ult clock live in the hanging end, which never moves.
+    const figure = mine ? near + 6 : near - 6 - 20;
+    r.icon.setPosition(figure + (mine ? 8 : 12), box.y + 20).setAlpha(dim ? 0.45 : 1).setTint(dim ? 0x9a94a8 : 0xffffff);
+    const inner = mine ? figure + 22 : figure - 2 - BAR;
     const max = maxHp(h);
     const hp = dead ? 0 : Math.max(0, h.hp);
-    const barY = box.y + 13;
-    g.fillStyle(INK).fillRect(inner - 1, barY - 1, BAR + 2, 6);
-    g.fillStyle(NIGHT).fillRect(inner, barY, BAR, 4);
+    const barY = box.y + 9;
+    g.fillStyle(INK).fillRect(inner - 1, barY - 1, BAR + 2, 8);
+    g.fillStyle(NIGHT).fillRect(inner, barY, BAR, 6);
     const fill = Math.ceil((BAR * hp) / max);
     const tint = dim ? 0x6b6577 : h.retreating ? GOLD : TEAM[h.side].main;
-    g.fillStyle(tint).fillRect(mine ? inner : inner + BAR - fill, barY, fill, 4);
+    g.fillStyle(tint).fillRect(mine ? inner : inner + BAR - fill, barY, fill, 6);
     g.fillStyle(dim ? 0x8d8799 : TEAM[h.side].light).fillRect(mine ? inner : inner + BAR - fill, barY, fill, 1);
-    r.unknown.setVisible(!fresh && !dead).setPosition(inner + BAR / 2 + 1, barY + 2);
-    if (!fresh && !dead) g.fillStyle(INK, 0.8).fillRect(inner + BAR / 2 - 3, barY - 1, 7, 7);
+    r.unknown.setVisible(!fresh && !dead).setPosition(inner + BAR / 2 + 1, barY + 3);
+    if (!fresh && !dead) g.fillStyle(INK, 0.8).fillRect(inner + BAR / 2 - 3, barY - 1, 7, 8);
 
     this.drawClock(v, r, h, mine ? near + NARROW - 12 : near - NARROW + 12, box.y + 12, dim, time);
 
     // The pop-out, revealed once the bar has slid all the way.
     const out = r.open >= 1;
     const px = mine ? near + NARROW + 2 : near - WIDE + 4;
-    const lines = out ? this.details(v, h, live, fresh, tick) : ['', '', ''];
-    r.lines.forEach((t, i) => t.setText(lines[i]!.toUpperCase()).setPosition(px, box.y + 3 + i * LINE_H).setVisible(out));
+    const lines = out ? [def.name, ...this.details(v, h, live, fresh, tick)] : ['', '', ''];
+    r.lines.forEach((t, i) => say(t, lines[i]!).setPosition(px, box.y + 3 + i * LINE_H).setVisible(out)
+      .setTint(i === 0 ? (dim ? MAUVE : GOLD) : MAUVE));
     const stance = dead || !fresh ? '' : h.stance;
-    r.stance.setText(out ? stance.toUpperCase() : '').setTint(h.stance === 'aggressive' ? BLOOD : CREAM)
+    say(r.stance, out ? stance : '').setTint(h.stance === 'aggressive' ? BLOOD : CREAM)
       .setPosition(px + (WIDE - NARROW - 8) - stance.length * 4, box.y + 3).setAlpha(dim ? 0.6 : 1);
     if (out) g.fillStyle(DUSK, 0.6).fillRect(mine ? near + NARROW - 1 : near - NARROW, box.y + 3, 1, box.height - 6);
   }
@@ -176,34 +188,32 @@ export class Roster {
       const pulse = dim ? 0.5 : 0.75 + 0.25 * Math.sin(time / 200);
       g.fillStyle(VIOLET, pulse).fillCircle(cx, cy, R);
       g.fillStyle(0xffffff, pulse).fillRect(cx - 3, cy, 7, 1).fillRect(cx, cy - 3, 1, 7);
-      r.clock.setText('');
+      say(r.clock, '');
       return;
     }
     if (part > 0) {
       g.fillStyle(VIOLET, dim ? 0.3 : 0.55).slice(cx, cy, R, -Math.PI / 2, -Math.PI / 2 + part * Math.PI * 2, false).fillPath();
     }
     g.fillStyle(MAUVE).fillRect(cx, cy - R, 1, 2);
-    r.clock.setText(String(left)).setPosition(cx + 1, cy + 1).setTint(dim ? MAUVE : CREAM);
+    say(r.clock, String(left)).setPosition(cx + 1, cy + 1).setTint(dim ? MAUVE : CREAM);
   }
 
-  /** The three pop-out lines: growth and stance, the fight numbers, what is particular to this hero. */
+  /** The pop-out lines under the name: role, growth and stats, then what is particular to this hero. */
   private details(v: MatchView, h: Hero, live: Hero, fresh: boolean, tick: number): string[] {
     const st = stats(h);
     const xp = Math.floor(h.xp / XP_UNIT);
-    const hp = `${Math.max(0, h.hp)}/${maxHp(h)}`;
-    if (live.respawnAt >= 0) return [`${h.role}  xp ${xp}`, `down: back in ${live.respawnAt - v.mapTick} ticks`, special(v, h).join('  ')];
+    const fight = `dmg${st.dmg} res${st.res} spd${st.spd}`;
+    const hp = `hp${Math.max(0, h.hp)}/${maxHp(h)}`;
+    if (live.respawnAt >= 0) return [`${h.role} xp ${xp}  down: back in ${live.respawnAt - v.mapTick}`, special(v, h).join('  ')];
     if (!fresh) {
-      return [
-        `${h.role}  ${tick < 0 ? 'never seen' : `last seen tick ${tick}`}`,
-        tick < 0 ? 'hp ? at full when the ball began' : `hp ${hp} then  xp ${xp}`,
-        `dmg ${st.dmg}  res ${st.res}  spd ${st.spd}${tick < 0 ? ' at least' : ''}`,
-      ];
+      return tick < 0
+        ? [`${h.role}  never seen`, `hp full at the start ${fight}`]
+        : [`${h.role}  last seen tick ${tick}`, `then: ${hp} ${fight} xp ${xp}`];
     }
     const doing = h.retreating ? 'retreating' : h.roam >= 0 ? 'roaming' : h.fx.engagement >= 0 ? 'fighting' : '';
     return [
-      `${h.role}  xp ${xp}  ${doing}`,
-      `hp ${hp} dmg ${st.dmg} res ${st.res} spd ${st.spd}`,
-      special(v, h).join('  '),
+      `${h.role} xp ${xp} ${hp} ${fight}`,
+      [doing, ...special(v, h)].filter(Boolean).join('  '),
     ];
   }
 
