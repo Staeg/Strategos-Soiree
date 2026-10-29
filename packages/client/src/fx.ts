@@ -121,5 +121,5 @@ export function corners(g: Phaser.GameObjects.Graphics, at: Point, r: number, ti
   }
 }
 
-/** Rounds to the grid of pixels `px` world units wide. */
-export const snap = (v: number, px = 1): number => Math.round(v / px) * px;
+/** Rounds to the grid of pixels `px` world units wide; a grid of 0 leaves `v` be. */
+export const snap = (v: number, px = 1): number => (px > 0 ? Math.round(v / px) * px : v);

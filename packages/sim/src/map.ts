@@ -109,13 +109,24 @@ function laneGoal(s: MatchState, h: Hero, lane: LaneId, vis: boolean[]): number 
 /**
  * Laning: a non-jungler standing on a lane cell with no allied minions on it
  * or further ahead along that lane is exposed. Every enemy hero on its cell
- * gets a free hit, and it withdraws a cell towards home. Everyone exposed is
- * found first, so two heroes caught out together trade hits evenly.
+ * gets a free hit, and it withdraws a cell towards home. A hero under its own
+ * tower is never exposed: it holds, and the enemy heroes there hit the tower
+ * instead. Everyone exposed is found first, so two heroes caught out together
+ * trade hits evenly.
  */
 function laning(s: MatchState): void {
-  const exposed = s.heroes.filter((h) => alive(h) && h.role !== 'jungle' && h.cell !== CORE[0] && h.cell !== CORE[1]
-    && heroesOn(s, h.cell, foe(h.side)).length > 0 && uncovered(s, h));
+  const contested = (h: Hero) => alive(h) && h.role !== 'jungle' && h.cell !== CORE[0] && h.cell !== CORE[1]
+    && heroesOn(s, h.cell, foe(h.side)).length > 0;
+  const towerOf = (h: Hero) => s.structures.findIndex((st) => st.cell === h.cell && st.side === h.side && st.hp > 0);
+  const exposed = s.heroes.filter((h) => contested(h) && towerOf(h) < 0 && uncovered(s, h));
   const hits = exposed.map((h) => heroesOn(s, h.cell, foe(h.side)).map((e) => ({ by: e, amount: mitigate(stats(e).dmg, stats(h).res) })));
+  // Each tower shielding a hero takes the free hits of every enemy hero beside it, once.
+  const sieges = new Map<number, number>();
+  for (const h of s.heroes) {
+    const ti = contested(h) && uncovered(s, h) ? towerOf(h) : -1;
+    if (ti >= 0 && !sieges.has(ti)) sieges.set(ti, heroesOn(s, h.cell, foe(h.side)).reduce((n, e) => n + stats(e).dmg, 0));
+  }
+  for (const [ti, amount] of [...sieges].sort((a, b) => a[0] - b[0])) damageStructure(s, ti, amount);
   exposed.forEach((h, i) => {
     const lane = LANES_AT[h.cell]![0]!;
     const path = LANES[lane];

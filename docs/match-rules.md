@@ -54,7 +54,9 @@ then free minions march, then camps refill, waves spawn, cards are drawn.
 - **Laning**: a non-jungler on a lane cell with no allied minions on it or
   further ahead along the lane is exposed. Each enemy hero on that cell gets a
   free hit on it (its DMG against the hero's RES), and it withdraws one cell
-  towards home. Laners walk back up behind their wave, so lanes rock back and
+  towards home. A hero under its own tower is never exposed: it holds its
+  cell, and each enemy hero there hits the tower for its DMG instead.
+  Laners walk back up behind their wave, so lanes rock back and
   forth with the waves and structures wear down.
 - **Retreat**: below 40% HP (passive) or 20% (aggressive), a hero walks home on
   the next tick. **(gap fill)** The own core heals 25% max HP per tick; the hero
