@@ -1,7 +1,7 @@
-import { CORE, LANES, LANES_AT, NEIGHBOURS, laneCell, distance, stepToward } from './board.ts';
+import { CORE, LANES, LANES_AT, NEIGHBOURS, laneCell, distance, stepHome, stepToward } from './board.ts';
 import {
-  BASE_HEAL, FIGHT_EVERY, MINION_DMG, MINION_STRIKE, ROLE_LANE, STANCES,
-  TOWER_DMG, WAVE_EVERY, WAVE_SIZE, XP_MINION, XP_TOWER, campDef, heroDef, type CommandOp, type MapOp,
+  BASE_HEAL, MINION_DMG, MINION_STRIKE, ROLE_LANE, STANCES,
+  TOWER_DMG, WAVE_EVERY, WAVE_SIZE, XP_MINION, XP_TOWER, campDef, heroDef, type MapOp,
 } from './content.ts';
 import { alive, awardXp, foe, heal, heroesOn, idiv, kill, maxHp, mitigate, stats } from './hero.ts';
 import { addCharge, aura, boon, grow, shadowCell } from './powers.ts';
@@ -25,10 +25,7 @@ export function mapTick(s: MatchState): void {
       if (s.mapTick >= h.respawnAt) respawn(s, h);
       continue;
     }
-    if (!h.retreating && h.hp * 100 < maxHp(h) * STANCES[h.stance].retreat) {
-      h.retreating = true;
-      h.roam = -1;
-    }
+    if (!h.retreating && h.hp * 100 < maxHp(h) * STANCES[h.stance].retreat) h.retreating = true;
   }
   for (const h of s.heroes) if (alive(h)) walk(s, h, vis[h.side]);
   laning(s);
@@ -56,9 +53,6 @@ export function mapTick(s: MatchState): void {
   s.wards = s.wards.filter((w) => w.until > s.mapTick);
 }
 
-/** The end of the current map phase, as a map tick: when "until the next fight phase" runs out. */
-export const nextFightTick = (s: MatchState): number => (idiv(s.mapTick, FIGHT_EVERY) + 1) * FIGHT_EVERY;
-
 // ---- heroes ----------------------------------------------------------------
 
 function respawn(s: MatchState, h: Hero): void {
@@ -76,12 +70,10 @@ function walk(s: MatchState, h: Hero, vis: boolean[]): void {
       h.retreating = false;
     }
   }
-  h.cell = stepToward(h.cell, goal(s, h, vis), h.side);
+  h.cell = h.retreating ? stepHome(h.cell, h.side) : stepToward(h.cell, goal(s, h, vis), h.side);
 }
 
 function goal(s: MatchState, h: Hero, vis: boolean[]): number {
-  if (h.retreating) return CORE[h.side];
-  if (h.roam >= 0) return h.roam;
   const lane = ROLE_LANE[h.role];
   return lane === -1 ? campGoal(s, h, vis) : laneGoal(s, h, lane, vis);
 }
@@ -152,12 +144,19 @@ function uncovered(s: MatchState, h: Hero): boolean {
 }
 
 /**
- * Junglers head for the camp they can start on soonest: the walk there or
- * the wait for it to stand again, whichever is longer, by what their side
- * last saw of it. Aggressive junglers also raid enemy camps believed up.
+ * Junglers go first for the camp their side's strategy named, while it is
+ * believed up. Otherwise they head for the camp they can start on soonest:
+ * the walk there or the wait for it to stand again, whichever is longer, by
+ * what their side last saw of it. Aggressive junglers also raid enemy camps
+ * believed up.
  */
 function campGoal(s: MatchState, h: Hero, vis: boolean[]): number {
   const intel = s.sides[h.side].campIntel;
+  if (h.camp >= 0) {
+    const c = s.camps[h.camp]!;
+    if (intel[h.camp]! < 0 && !(vis[c.cell] && c.creeps === 0)) return c.cell;
+    h.camp = -1;
+  }
   let best = -1, bestKey = Infinity;
   s.camps.forEach((c, i) => {
     const seenEmpty = vis[c.cell] && c.creeps === 0;
@@ -242,20 +241,6 @@ export function mapOp(s: MatchState, h: Hero, op: MapOp, cell: number): boolean 
     }
     case 'shadow': case 'dusk': case 'carve':
       return false;
-  }
-}
-
-/** Command ultimates, aimed at `cell`. Returns false when there was nothing to do. */
-export function commandOp(s: MatchState, h: Hero, op: CommandOp, cell: number): boolean {
-  switch (op.op) {
-    case 'beacon': {
-      const ally = s.heroes.find((x) => x.side === h.side && x !== h && alive(x) && x.cell === cell);
-      if (!ally) return false;
-      ally.cell = h.cell;
-      ally.roam = -1;
-      ally.retreating = false;
-      return true;
-    }
   }
 }
 

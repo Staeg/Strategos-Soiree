@@ -1,15 +1,15 @@
-import { CORE, JUNGLE_HALVES, N_CELLS, STRUCTURE_SITES, distance, opposite } from './board.ts';
-import { resolveNext } from './cards.ts';
+import { CORE, JUNGLE, JUNGLE_HALVES, STRUCTURE_SITES, distance, opposite } from './board.ts';
+import { ALL_AT_ONCE, resolveNext } from './cards.ts';
 import {
   CAMP_IDS, CARDS_KEPT, CARD_OWNER, DRAW_EVERY, FIGHT_EVERY, INTERLEAVE, MANA_KEPT, MANA_PER_PHASE, MAX_MAP_TICKS,
-  ORDERS_PER_PHASE, STRUCTURE_HP, buildDeck, campDef, cardDef, heroDef, lineups, type HeroId,
+  STRUCTURE_HP, buildDeck, campDef, cardDef, heroDef, lineups, type HeroId,
 } from './content.ts';
 import { clashStep, freshFx, startClash, triggerOp } from './fight.ts';
-import { alive, maxHp } from './hero.ts';
-import { commandOp, mapTick } from './map.ts';
+import { alive, heroesOn, maxHp } from './hero.ts';
+import { mapTick } from './map.ts';
 import { addCharge } from './powers.ts';
 import { seedRng, shuffle, type RngState } from './rng.ts';
-import type { Camp, Command, Hero, MatchState, Side, SideState } from './types.ts';
+import type { Camp, Command, Hero, MatchState, Side, SideState, Stage } from './types.ts';
 
 /**
  * The whole game is `step(state, commands) -> state`: pure, integer-only and
@@ -18,9 +18,7 @@ import type { Camp, Command, Hero, MatchState, Side, SideState } from './types.t
  * see `Phase`.
  */
 
-const freshOrders = () => ({ ...ORDERS_PER_PHASE });
-
-/** Without explicit lineups, the seed decides which of each role's two heroes plays for which side. */
+/** Without explicit lineups, the seed decides which of each role's two heroes plays for which side. The ball opens on a strategy stage. */
 export function createMatch(seed: number, teams: readonly [readonly HeroId[], readonly HeroId[]] = lineups(seed)): MatchState {
   const rng = { map: seedRng(seed, 1), fight: seedRng(seed, 2), cards: seedRng(seed, 3) };
   const camps = campLayout(seedRng(seed, 4));
@@ -30,7 +28,7 @@ export function createMatch(seed: number, teams: readonly [readonly HeroId[], re
       const def = heroDef(id);
       const h: Hero = {
         uid: heroes.length, side, role: def.role, id, cell: CORE[side], hp: 0, xp: 0, stance: 'passive',
-        retreating: false, roam: -1, respawnAt: -1, mapReadyAt: 0,
+        retreating: false, camp: -1, respawnAt: -1, mapReadyAt: 0,
         ultReadyAt: 'cooldown' in def.ult ? def.ult.cooldown : 0, ascended: false,
         charge: 0, grown: { dmg: 0, spd: 0 }, boons: [], origin: { hp: 0, cell: CORE[side], respawnAt: -1 }, fx: freshFx(),
       };
@@ -40,10 +38,10 @@ export function createMatch(seed: number, teams: readonly [readonly HeroId[], re
   }
   const side = (s: Side): SideState => ({
     mana: 0, hand: [], deck: shuffle(rng.cards, buildDeck(teams[s])), discard: [], plays: [], committed: false,
-    orders: freshOrders(), campIntel: camps.map(() => -1), blindUntil: 0,
+    strategy: { stances: [], camp: -1 }, campIntel: camps.map(() => -1), blindUntil: 0,
   });
-  return {
-    seed: seed >>> 0, seq: 0, mapTick: 0, fightPhase: 0, fightTick: 0, phase: 'map',
+  const s: MatchState = {
+    seed: seed >>> 0, seq: 0, mapTick: 0, fightPhase: 0, fightTick: 0, phase: 'plan', stage: 'strategy', nextFight: FIGHT_EVERY,
     heroes,
     minions: [],
     structures: STRUCTURE_SITES.map((st) => ({ ...st, hp: STRUCTURE_HP[st.kind], maxHp: STRUCTURE_HP[st.kind], guardedUntil: 0 })),
@@ -52,6 +50,9 @@ export function createMatch(seed: number, teams: readonly [readonly HeroId[], re
     sides: [side(0), side(1)],
     rng, winner: null, events: [],
   };
+  openStage(s, 'strategy');
+  s.events = [];
+  return s;
 }
 
 /**
@@ -89,26 +90,30 @@ export function advance(s: MatchState, commands: readonly Command[]): void {
 
 function phaseStep(s: MatchState): void {
   switch (s.phase) {
-    case 'map':
+    case 'map': {
       mapTick(s);
       if (s.phase !== 'map') return;
       if (s.mapTick % DRAW_EVERY === 0) for (const side of [0, 1] as const) draw(s, side);
-      if (s.mapTick % FIGHT_EVERY === 0) startPlan(s);
-      else if (s.mapTick >= MAX_MAP_TICKS) finishOnPoints(s);
-      return;
+      if (s.mapTick >= MAX_MAP_TICKS) return finishOnPoints(s);
+      if (s.mapTick >= s.nextFight) return startFight(s, false);
+      const met = encounter(s);
+      if (met < 0) return;
+      s.events.push({ type: 'encounter', cell: met });
+      return startFight(s, true);
+    }
     case 'plan':
-      if (s.sides[0].committed && s.sides[1].committed) startResolve(s);
+      if (s.sides[0].committed && s.sides[1].committed) reveal(s);
       return;
     case 'resolve': {
       resolveNext(s);
       const fresh = s.engagements.some((e) => !e.over && !e.started);
       if (fresh && (INTERLEAVE || s.pending.length === 0)) startClash(s);
-      else if (s.pending.length === 0) endFightPhase(s);
+      else if (s.pending.length === 0) closeStage(s);
       return;
     }
     case 'clash':
       if (clashStep(s)) return;
-      if (s.pending.length === 0) return endFightPhase(s);
+      if (s.pending.length === 0) return closeStage(s);
       s.phase = 'resolve';
       s.events.push({ type: 'phase', phase: 'resolve' });
       return;
@@ -144,29 +149,13 @@ function apply(s: MatchState, c: Command): void {
   switch (c.type) {
     case 'stance': {
       const h = own(c.uid);
-      if (s.phase !== 'map' || !h || !alive(h) || me.orders.stance <= 0) return;
-      h.stance = h.stance === 'passive' ? 'aggressive' : 'passive';
-      me.orders.stance--;
-      s.events.push({ type: 'order', side: c.side, uid: h.uid, order: 'stance' });
+      if (!drafting(s, me) || !h || (c.stance !== 'passive' && c.stance !== 'aggressive')) return;
+      me.strategy.stances[cast(s, c.side).indexOf(h)] = c.stance;
       return;
     }
-    case 'roam': {
-      const h = own(c.uid);
-      if (s.phase !== 'map' || !h || !alive(h) || me.orders.roam <= 0 || !(c.cell >= 0 && c.cell < N_CELLS)) return;
-      h.roam = c.cell;
-      h.retreating = false;
-      me.orders.roam--;
-      s.events.push({ type: 'order', side: c.side, uid: h.uid, order: 'roam' });
-      return;
-    }
-    case 'ult': {
-      const h = own(c.uid);
-      const ult = h && heroDef(h.id).ult;
-      if (s.phase !== 'map' || !h || !alive(h) || ult?.kind !== 'command' || s.fightPhase < h.ultReadyAt) return;
-      if (!(c.cell >= 0 && c.cell < N_CELLS) || distance(h.cell, c.cell) > ult.range) return;
-      if (!commandOp(s, h, ult.op, c.cell)) return;
-      h.ultReadyAt = s.fightPhase + ult.cooldown;
-      s.events.push({ type: 'order', side: c.side, uid: h.uid, order: 'ult' });
+    case 'camp': {
+      if (!drafting(s, me) || !(c.camp === -1 || (Number.isInteger(c.camp) && c.camp >= 0 && c.camp < s.camps.length))) return;
+      me.strategy.camp = c.camp;
       return;
     }
     case 'play': {
@@ -174,8 +163,8 @@ function apply(s: MatchState, c: Command): void {
       const source = own(c.source);
       if (s.phase !== 'plan' || me.committed || !id || !source) return;
       const def = cardDef(id);
-      if (def.cost > me.mana || (CARD_OWNER[id] !== undefined && CARD_OWNER[id] !== source.id)) return;
-      const wants = def.aim === 'enemy' || def.aim === 'ally' ? ['hero'] : def.aim === 'tower' ? ['cell'] : def.aim === 'siege' ? ['hero', 'cell'] : ['none'];
+      if (def.cost > me.mana || !def.stages.includes(s.stage) || (CARD_OWNER[id] !== undefined && CARD_OWNER[id] !== source.id)) return;
+      const wants = def.aim === 'enemy' || def.aim === 'ally' ? ['hero'] : def.aim === 'tower' || def.aim === 'cell' ? ['cell'] : def.aim === 'siege' ? ['hero', 'cell'] : ['none'];
       if (!wants.includes(c.target.kind)) return;
       me.mana -= def.cost;
       me.hand.splice(c.handIndex, 1);
@@ -192,17 +181,27 @@ function apply(s: MatchState, c: Command): void {
     }
     case 'commit': {
       if (s.phase !== 'plan' || me.committed) return;
+      me.committed = true;
+      // The hand is cut down to size once a fight phase is over, as its strategy goes in.
+      if (s.stage !== 'strategy') return;
       const drop = [...new Set(c.discard)].filter((i) => i >= 0 && i < me.hand.length).sort((a, b) => b - a);
       for (const i of drop) {
         if (me.hand.length <= CARDS_KEPT) break;
         discard(me, me.hand.splice(i, 1)[0]!);
       }
       while (me.hand.length > CARDS_KEPT) discard(me, me.hand.shift()!);
-      me.committed = true;
       return;
     }
   }
 }
+
+/** A side's heroes, in uid order. */
+const cast = (s: MatchState, side: Side): Hero[] => s.heroes.filter((h) => h.side === side);
+
+const jungler = (s: MatchState, side: Side): Hero | undefined => cast(s, side).find((h) => h.role === 'jungle');
+
+/** Whether a side may still change the strategy it is drawing up. */
+const drafting = (s: MatchState, me: SideState): boolean => s.phase === 'plan' && s.stage === 'strategy' && !me.committed;
 
 /** Ultimate cards never enter the deck: unkept, they simply wait for the next draw. */
 function discard(me: SideState, id: MatchState['sides'][number]['hand'][number]): void {
@@ -225,38 +224,101 @@ function draw(s: MatchState, side: Side): void {
   s.events.push({ type: 'draw', side });
 }
 
-function startPlan(s: MatchState): void {
-  s.phase = 'plan';
+/**
+ * A fight phase: the scheduled one, with fresh mana, or one an encounter
+ * calls at once, fought with whatever cards and mana the sides hold.
+ */
+function startFight(s: MatchState, encounter: boolean): void {
   s.fightPhase++;
-  for (const me of s.sides) {
-    me.mana = Math.min(me.mana, MANA_KEPT) + MANA_PER_PHASE;
-    me.plays = [];
-    me.committed = false;
-  }
-  for (const h of s.heroes) {
-    h.roam = -1;
-    h.origin = { hp: h.hp, cell: h.cell, respawnAt: h.respawnAt };
-  }
-  s.events.push({ type: 'phase', phase: 'plan' });
+  if (!encounter) for (const me of s.sides) me.mana = Math.min(me.mana, MANA_KEPT) + MANA_PER_PHASE;
+  for (const h of s.heroes) h.origin = { hp: h.hp, cell: h.cell, respawnAt: h.respawnAt };
+  openStage(s, 'motion');
 }
 
-/** Both sides are in: every play is now public, and resolves by initiative. */
-function startResolve(s: MatchState): void {
-  const all = s.sides.flatMap((me) => me.plays.map((p) => cardDef(p.card).initiative));
-  s.pending = [...new Set(all)].sort((a, b) => a - b);
+/**
+ * Heroes of both sides standing together off the lanes, on a jungle cell,
+ * meet: the cell where they do, or -1. Heroes walking home pass by.
+ */
+function encounter(s: MatchState): number {
+  return JUNGLE.find((cell) => {
+    const here = heroesOn(s, cell).filter((h) => !h.retreating);
+    return here.some((h) => h.side === 0) && here.some((h) => h.side === 1);
+  }) ?? -1;
+}
+
+/**
+ * Both sides plan the next stage blind. A side with no card for motion or
+ * play has nothing to plan and is in at once; strategy always waits, since
+ * it holds the stances and the hand's discards.
+ */
+function openStage(s: MatchState, stage: Stage): void {
+  s.phase = 'plan';
+  s.stage = stage;
+  for (const side of [0, 1] as const) {
+    const me = s.sides[side];
+    me.plays = [];
+    me.committed = stage !== 'strategy' && !me.hand.some((id) => cardDef(id).stages.includes(stage));
+    if (stage === 'strategy') me.strategy = { stances: cast(s, side).map((h) => h.stance), camp: jungler(s, side)?.camp ?? -1 };
+  }
+  s.events.push({ type: 'phase', phase: 'plan', stage });
+  if (s.sides[0].committed && s.sides[1].committed) reveal(s);
+}
+
+/** Both sides are in: every play is now public. Play resolves by initiative; motion and strategy all at once. */
+function reveal(s: MatchState): void {
+  const plays = s.sides.flatMap((me) => me.plays);
+  s.pending = s.stage === 'play'
+    ? [...new Set(plays.map((p) => cardDef(p.card).initiative))].sort((a, b) => a - b)
+    : plays.length ? [ALL_AT_ONCE] : [];
   s.initiative = -1;
   s.phase = 'resolve';
   s.events.push({ type: 'phase', phase: 'resolve' });
-  if (s.pending.length === 0) endFightPhase(s);
+  if (s.pending.length === 0) closeStage(s);
 }
 
+/** Motion leads to play, play to strategy, and strategy's orders end the fight phase. */
+function closeStage(s: MatchState): void {
+  if (s.stage === 'motion') return openStage(s, 'play');
+  if (s.stage === 'play') return openStage(s, 'strategy');
+  takeStrategy(s);
+  endFightPhase(s);
+}
+
+/** Both sides' stances and camps take hold together. */
+function takeStrategy(s: MatchState): void {
+  for (const side of [0, 1] as const) {
+    const plan = s.sides[side].strategy;
+    cast(s, side).forEach((h, i) => {
+      const stance = plan.stances[i] ?? h.stance;
+      if (stance === h.stance) return;
+      h.stance = stance;
+      s.events.push({ type: 'order', side, uid: h.uid, order: 'stance' });
+    });
+    const j = jungler(s, side);
+    if (j && j.camp !== plan.camp) {
+      j.camp = plan.camp;
+      s.events.push({ type: 'order', side, uid: j.uid, order: 'camp' });
+    }
+  }
+}
+
+/**
+ * The next fight phase is called FIGHT_EVERY map ticks after this one ends.
+ * Rivals still standing together on a jungle cell part: the one lowest on HP
+ * walks home, until only one side holds its ground there.
+ */
 function endFightPhase(s: MatchState): void {
   for (const h of s.heroes) h.fx = freshFx();
-  for (const me of s.sides) {
-    me.plays = [];
-    me.orders = freshOrders();
-  }
+  for (const me of s.sides) me.plays = [];
   s.engagements = [];
+  s.nextFight = s.mapTick + FIGHT_EVERY;
+  for (const cell of JUNGLE) {
+    for (;;) {
+      const here = heroesOn(s, cell).filter((h) => !h.retreating);
+      if (!here.some((h) => h.side === 0) || !here.some((h) => h.side === 1)) break;
+      here.reduce((a, b) => (b.hp < a.hp ? b : a)).retreating = true;
+    }
+  }
   s.phase = 'map';
   s.events.push({ type: 'phase', phase: 'map' });
 }

@@ -1,4 +1,4 @@
-import { distance } from './board.ts';
+import { N_CELLS, distance } from './board.ts';
 import { CARDS_KEPT, CARD_OWNER, FIGHT_EVERY, ROLE_LANE, cardDef, heroDef, isArmed, type CardOp } from './content.ts';
 import { alive, atBase, foe, heal, kill, maxHp, mitigate, stats } from './hero.ts';
 import { damageStructure } from './map.ts';
@@ -7,17 +7,20 @@ import { randInt } from './rng.ts';
 import { visibility } from './vision.ts';
 import type { Engagement, Fizzle, Hero, MatchState, Play, Structure } from './types.ts';
 
+/** In `pending`, the batch of every play at once: motion and strategy have no initiative. */
+export const ALL_AT_ONCE = -1;
+
 /**
- * Resolves every play at the next initiative. Plays that share an initiative
- * are simultaneous: all of them are checked and aimed against the state as it
- * stood before any of them, and only then applied, so none can change what
- * another does. Engages at one initiative that share a hero become a single
- * engagement as long as all of them together.
+ * Resolves every play at the next initiative (or all of them, for
+ * ALL_AT_ONCE). Plays in one batch are simultaneous: all of them are checked
+ * and aimed against the state as it stood before any of them, and only then
+ * applied, so none can change what another does. Engages at one initiative
+ * that share a hero become a single engagement as long as all of them together.
  */
 export function resolveNext(s: MatchState): void {
   const initiative = s.pending.shift()!;
   s.initiative = initiative;
-  const plays = s.sides.flatMap((side) => side.plays.filter((p) => cardDef(p.card).initiative === initiative));
+  const plays = s.sides.flatMap((side) => side.plays.filter((p) => initiative === ALL_AT_ONCE || cardDef(p.card).initiative === initiative));
   const seen = [visibility(s, 0), visibility(s, 1)] as const;
   const aimed = plays.map((p) => (p.cancelled ? 'cancelled' : aim(s, p, initiative, seen[p.side])));
   const engages: Aimed[] = [];
@@ -38,7 +41,7 @@ interface Aimed {
   source: Hero;
   target: Hero | null;
   structure: Structure | null;
-  /** For an Engage: who it pulls in, where, for how long. */
+  /** For an Engage: who it pulls in, where, for how long. Where a hero moves to, too. */
   members: number[];
   cell: number;
   length: number;
@@ -61,6 +64,8 @@ function aim(s: MatchState, p: Play, initiative: number, seen: boolean[]): Aimed
     const enemy = def.aim === 'enemy' || def.aim === 'siege';
     if (enemy && (target.side === p.side || !heroSeen(s, p.side, target, seen))) return 'target';
     if (def.aim === 'ally' && target.side !== p.side) return 'target';
+  } else if (p.target.kind === 'cell' && def.aim === 'cell') {
+    if (!(p.target.cell >= 0 && p.target.cell < N_CELLS)) return 'target';
   } else if (p.target.kind === 'cell') {
     const cell = p.target.cell;
     structure = s.structures.find((x) => x.cell === cell && x.hp > 0) ?? null;
@@ -97,7 +102,18 @@ function aim(s: MatchState, p: Play, initiative: number, seen: boolean[]): Aimed
         if (distance(source.cell, target?.cell ?? structure!.cell) > op.reach) return 'reach';
         break;
       case 'shadowStep':
-        if (shadowCell(source) < 0) return 'none';
+        out.cell = shadowCell(source);
+        if (out.cell < 0) return 'none';
+        break;
+      case 'move': {
+        const to = (p.target as { cell: number }).cell;
+        if (to === source.cell || distance(source.cell, to) > op.reach) return 'reach';
+        out.cell = to;
+        break;
+      }
+      case 'beacon':
+        if (!target || target === source) return 'target';
+        out.cell = source.cell;
         break;
       default:
         break;
@@ -156,7 +172,8 @@ function applyOp(s: MatchState, p: Play, a: Aimed, op: CardOp): void {
       return;
     }
     case 'shadowStep':
-      src.cell = shadowCell(src);
+    case 'move':
+      src.cell = a.cell;
       return;
     case 'nightfall':
       s.sides[foe(src.side)].blindUntil = until;
@@ -194,6 +211,10 @@ function applyOp(s: MatchState, p: Play, a: Aimed, op: CardOp): void {
       return addBoon(src, { kind: 'clear', value: op.n, until });
     case 'cadence':
       return addBoon(src, { kind: 'cadence', value: op.every, until });
+    case 'beacon':
+      a.target!.cell = a.cell;
+      a.target!.retreating = false;
+      return;
   }
 }
 

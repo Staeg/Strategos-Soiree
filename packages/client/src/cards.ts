@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CARD_OWNER, cardDef, type CardId, type CardOp, type Side } from '@soiree/sim';
+import { CARD_OWNER, cardDef, type CardId, type CardOp, type Side, type Stage } from '@soiree/sim';
 import { FACE_H, FACE_W, heroKey } from './art/forge.ts';
 import { SIGNATURES } from './art/heroes.ts';
 import { BLOOD, CREAM, DUSK, GOLD, INK, MANA, MANA_DARK, MANA_LIGHT, MAUVE, NIGHT, PLUM, VIOLET } from './art/palette.ts';
@@ -11,8 +11,16 @@ const ICON: Record<CardOp['op'], string> = {
   strike: 'strike', shell: 'strike', heal: 'heal', rewind: 'heal', nightfall: 'reveal',
   empower: 'tactic', focus: 'tactic', slow: 'tactic', expose: 'tactic', quick: 'tactic', firstHit: 'tactic', opening: 'tactic',
   procession: 'tactic', charge: 'tactic', cancel: 'tactic', unwrite: 'tactic', squeeze: 'tactic', rally: 'tactic', clear: 'tactic', cadence: 'tactic',
+  move: 'move', beacon: 'move',
 };
 export const iconKey = (id: CardId, side: Side) => `icon-${ICON[cardDef(id).effect[0]!.op]}-${side}`;
+
+/** A card's corner badge: its initiative if it can be played in the play stage, else the one stage it plays in. */
+export const STAGE_MARK: Record<Stage, string> = { motion: 'M', play: 'P', strategy: 'S' };
+const badge = (id: CardId): string => {
+  const def = cardDef(id);
+  return def.stages.includes('play') ? String(def.initiative) : def.stages.map((st) => STAGE_MARK[st]).join('');
+};
 
 export const CARD_W = 56;
 export const CARD_H = 78;
@@ -22,8 +30,9 @@ const BIG_MIN_H = 156;
 
 /**
  * A card face, centred on its container's origin: mana gem top-left,
- * initiative badge top-right, emblem, name, text, and on a hero's own card
- * that hero's face bottom-left. Every line is wrapped to the card and
+ * initiative badge top-right (a stage letter for cards with no initiative),
+ * emblem, name, text, the stages it plays in bottom-right, and on a hero's
+ * own card that hero's face bottom-left. Every line is wrapped to the card and
  * clipped to it, so no text ever leaves the frame.
  *
  * `big` draws the enlargement for the inspect panel: `w` wide (BIG_W by
@@ -50,10 +59,10 @@ export function cardFace(
   const body = (opts.rules ? cardRules(id) : [def.text]).map(glyphs);
   const bodyLines = body.flatMap((para, i) => [...(i > 0 ? [''] : []), ...wrap(para, Math.floor((inner + 1) / GLYPH_W))]);
   const keyCols = Math.floor((inner + 1 - (owner ? badgeW : 0)) / GLYPH_W);
-  const keywords = def.keywords.length ? wrap(def.keywords.join(' * '), keyCols) : [];
+  const keywords = wrap([...def.stages, ...def.keywords].join(' * '), keyCols);
   const nameTop = 6 + 16 * k + 3;
   const bodyTop = nameTop + name.length * LINE_H * k + 2;
-  const footer = big && (keywords.length || owner) ? Math.max(keywords.length * LINE_H + 4, owner ? badgeH - 2 : 0) : !big && owner ? badgeH - 4 : 0;
+  const footer = big ? Math.max(keywords.length * LINE_H + 4, owner ? badgeH - 2 : 0) : owner ? badgeH - 4 : LINE_H;
   const h = big
     ? Math.min(opts.maxH ?? Infinity, Math.max(Math.min(BIG_MIN_H, opts.maxH ?? Infinity), bodyTop + bodyLines.length * LINE_H + footer + 4))
     : CARD_H;
@@ -78,14 +87,18 @@ export function cardFace(
   const parts: Phaser.GameObjects.GameObject[] = [g];
   parts.push(scene.add.image(0, top + 5 + 8 * k + 1, iconKey(id, side)).setScale(2 * k));
   parts.push(centred(scene, left - 2 + gem / 2 + 1, top - 2 + gem / 2 + 1, String(def.cost), CREAM, k));
-  parts.push(centred(scene, left + w - gem / 2 + 1, top - 2 + gem / 2 + 1, String(def.initiative), CREAM, k));
+  parts.push(centred(scene, left + w - gem / 2 + 1, top - 2 + gem / 2 + 1, badge(id), CREAM, k));
   parts.push(scene.add.bitmapText(0, top + nameTop, 'pixel', name.join('\n').toUpperCase(), undefined, 1).setOrigin(0.5, 0).setTint(INK).setScale(k));
 
   const room = Math.floor((h - bodyTop - footer - 3) / LINE_H);
   const shown = clip(bodyLines, room, Math.floor((inner + 1) / GLYPH_W));
   parts.push(scene.add.bitmapText(left + 4, top + bodyTop, 'pixel', shown.join('\n').toUpperCase()).setTint(opts.rules ? PLUM : BLOOD));
-  if (big && keywords.length) {
+  if (big) {
     parts.push(scene.add.bitmapText(left + 4 + (owner ? badgeW : 0), top + h - footer, 'pixel', keywords.join('\n').toUpperCase()).setTint(VIOLET));
+  } else {
+    // The stages it plays in, each in its place: M, P, S.
+    const marks = (['motion', 'play', 'strategy'] as const).map((st) => (def.stages.includes(st) ? STAGE_MARK[st] : ' ')).join('');
+    parts.push(scene.add.bitmapText(left + w - 4, top + h - LINE_H - 1, 'pixel', marks).setOrigin(1, 0).setTint(VIOLET));
   }
   if (owner) {
     const [bx, by] = [left - 2, top + h + 2 - badgeH];

@@ -15,7 +15,9 @@ export function cardRules(id: CardId): string[] {
   const who = hero ? shortName(hero) : 'the target hero';
   const Who = cap(who);
   const out = [
-    `${def.cost} mana. Initiative ${def.initiative}: resolves after every lower initiative, at the same time as equal ones.`,
+    `${def.cost} mana. Played in ${list(def.stages)}.`,
+    def.stages.includes('play') ? `Initiative ${def.initiative}: in play, resolves after every lower initiative, at the same time as equal ones.` : '',
+    def.stages.includes('motion') ? 'In motion, resolves at the same time as every other motion card.' : '',
     hero ? `Played by ${hero.name}.` : 'Target hero: whichever allied hero you pick to play it.',
     AIM[def.aim],
     ...def.effect.map((op) => cap(opRules(op, who, Who, owner))),
@@ -33,8 +35,10 @@ const AIM: Record<ReturnType<typeof cardDef>['aim'], string> = {
   ally: 'Aimed at an allied hero.',
   tower: 'Aimed at an allied structure.',
   siege: 'Aimed at an enemy hero or structure.',
+  cell: 'Aimed at a cell.',
 };
 
+const list = (xs: readonly string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} or ${xs[xs.length - 1]}` : xs[0] ?? '');
 const cells = (n: number) => `${n} cell${n === 1 ? '' : 's'}`;
 const ticks = (n: number) => `the first ${n} fight ticks`;
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -122,5 +126,9 @@ function opRules(op: CardOp, who: string, Who: string, owner: HeroId | undefined
       return `next map phase, ${who} kills ${op.n} more minion${op.n === 1 ? '' : 's'} a tick.`;
     case 'cadence':
       return `next map phase, ${owner ? heroDef(owner).map.name : 'the map ability'} runs every ${op.every} ticks.`;
+    case 'move':
+      return `${who} moves to the aimed cell, up to ${cells(op.reach)} away.`;
+    case 'beacon':
+      return `the aimed allied hero, wherever it is, arrives on ${who}'s cell, as it stood before anyone moved.`;
   }
 }

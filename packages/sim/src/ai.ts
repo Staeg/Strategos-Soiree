@@ -1,8 +1,8 @@
-import { distance } from './board.ts';
-import { CARDS_KEPT, CARD_OWNER, FIGHT_EVERY, cardDef, type CardId } from './content.ts';
+import { CELLS, CORE, distance } from './board.ts';
+import { CARDS_KEPT, CARD_OWNER, cardDef, type CardId } from './content.ts';
 import { alive, atBase, maxHp, stats } from './hero.ts';
 import { randInt, seedRng, type RngState } from './rng.ts';
-import type { Command, Hero, Play, Side, Target } from './types.ts';
+import type { Command, Hero, Play, Side, Stance, Target } from './types.ts';
 import type { MatchView } from './vision.ts';
 
 /**
@@ -34,22 +34,26 @@ const NONE: Target = { kind: 'none' };
 const known = (h: Hero) => alive(h) && h.cell >= 0;
 const ratio = (h: Hero) => h.hp / maxHp(h);
 
-/** Plays at random and gives no orders: the default behaviours do all the work. */
+/** Plays at random and keeps its strategy as it stands: the default behaviours do all the work. */
 class Novice implements Agent {
   readonly name: string = 'Novice';
   protected rng: RngState;
   constructor(seed: number) { this.rng = seedRng(seed, 101); }
 
   act(v: MatchView, side: Side): Command[] {
-    if (v.phase === 'map') return this.orders(v, side);
     if (v.phase !== 'plan' || v.sides[side].committed) return [];
+    if (v.stage === 'strategy') {
+      const orders = this.strategy(v, side);
+      if (orders.length) return orders;
+    }
     const options = this.options(v, side).filter((o) => o.value > this.threshold());
     if (options.length === 0) return [{ type: 'commit', side, discard: this.discards(v, side) }];
     const o = this.choose(options);
     return [{ type: 'play', side, handIndex: o.handIndex, source: o.source, target: o.target }];
   }
 
-  protected orders(_v: MatchView, _side: Side): Command[] { return []; }
+  /** Strategy orders still to give: none once the draft reads as wanted, so the agent moves on to its cards. */
+  protected strategy(_v: MatchView, _side: Side): Command[] { return []; }
   protected threshold(): number { return randInt(this.rng, 3) === 0 ? Infinity : 0; }
   protected choose(options: Option[]): Option { return options[randInt(this.rng, options.length)]!; }
   protected discards(_v: MatchView, _side: Side): number[] { return []; }
@@ -60,7 +64,7 @@ class Novice implements Agent {
     const out: Option[] = [];
     me.hand.forEach((id, handIndex) => {
       const def = cardDef(id);
-      if (def.cost > me.mana) return;
+      if (def.cost > me.mana || !def.stages.includes(v.stage)) return;
       for (const source of this.sources(v, side, id)) {
         const best = this.aim(v, side, id, source);
         if (best) out.push({ handIndex, source: source.uid, ...best });
@@ -82,7 +86,16 @@ class Novice implements Agent {
         if (!enemies.length) return null;
         return { target: { kind: 'hero', uid: enemies[randInt(this.rng, enemies.length)]!.uid }, value: 1 };
       }
-      case 'ally': return { target: { kind: 'hero', uid: source.uid }, value: 1 };
+      case 'ally': {
+        const others = v.heroes.filter((h) => h.side === side && known(h) && h !== source);
+        const t = others.length ? others[randInt(this.rng, others.length)]! : source;
+        return { target: { kind: 'hero', uid: t.uid }, value: 1 };
+      }
+      case 'cell': {
+        const reach = Math.max(...def.effect.map((op) => (op.op === 'move' ? op.reach : 0)));
+        const cells = CELLS.flatMap((_, c) => (c !== source.cell && distance(source.cell, c) <= reach ? [c] : []));
+        return cells.length ? { target: { kind: 'cell', cell: cells[randInt(this.rng, cells.length)]! }, value: 1 } : null;
+      }
       case 'tower': {
         const st = v.structures.find((x) => x.side === side && x.hp > 0 && x.kind !== 'core');
         return st ? { target: { kind: 'cell', cell: st.cell }, value: 1 } : null;
@@ -98,10 +111,11 @@ class Novice implements Agent {
 }
 
 /**
- * Reads the board: engages where its heroes outweigh the enemy on the two
- * cells an engage pulls in, follows up with joins and tactics, saves heroes
- * that are low and exposed, and sends its jungler to gank before each fight
- * phase.
+ * Reads the board: moves heroes in on weakened enemies and low allies out of
+ * reach, engages where its heroes outweigh the enemy on the two cells an
+ * engage pulls in, follows up with joins and tactics, saves heroes that are
+ * low and exposed, turns aggressive when healthy, and now and then sends a
+ * fresh jungler to invade.
  */
 class Tactician extends Novice {
   override readonly name: string = 'Tactician';
@@ -118,25 +132,28 @@ class Tactician extends Novice {
     return hand.map((id, i) => [i, worth(id)] as const).sort((a, b) => a[1] - b[1]).slice(0, hand.length - CARDS_KEPT).map(([i]) => i);
   }
 
-  protected override orders(v: MatchView, side: Side): Command[] {
-    const me = v.sides[side];
-    const mine = v.heroes.filter((h) => h.side === side && alive(h));
-    const phaseTick = v.mapTick % FIGHT_EVERY;
-    if (me.orders.roam > 0 && phaseTick === FIGHT_EVERY - 12) {
-      const jungler = mine.find((h) => h.role === 'jungle' && !h.retreating);
-      const prey = v.heroes.filter((h) => h.side !== side && known(h) && mine.some((a) => a.role !== 'jungle' && distance(a.cell, h.cell) <= 1));
-      prey.sort((a, b) => ratio(a) - ratio(b));
-      if (jungler && prey[0] && distance(jungler.cell, prey[0].cell) <= 8) return [{ type: 'roam', side, uid: jungler.uid, cell: prey[0].cell }];
-    }
-    if (me.orders.stance > 0) {
-      const tired = mine.find((h) => h.stance === 'aggressive' && ratio(h) < 0.5);
-      if (tired) return [{ type: 'stance', side, uid: tired.uid }];
-      if (phaseTick === 5) {
-        const fresh = mine.find((h) => h.stance === 'passive' && ratio(h) > 0.8);
-        if (fresh) return [{ type: 'stance', side, uid: fresh.uid }];
-      }
-    }
-    return [];
+  protected override strategy(v: MatchView, side: Side): Command[] {
+    const plan = v.sides[side].strategy;
+    const out: Command[] = [];
+    v.heroes.filter((h) => h.side === side).forEach((h, i) => {
+      const want: Stance = ratio(h) > 0.7 ? 'aggressive' : ratio(h) < 0.5 ? 'passive' : h.stance;
+      if (alive(h) && plan.stances[i] !== want) out.push({ type: 'stance', side, uid: h.uid, stance: want });
+    });
+    const camp = this.invasion(v, side);
+    if (camp !== plan.camp) out.push({ type: 'camp', side, camp });
+    return out;
+  }
+
+  /** Every other fight phase, a fresh jungler goes for the nearest rival camp believed standing. */
+  private invasion(v: MatchView, side: Side): number {
+    const j = v.heroes.find((h) => h.side === side && h.role === 'jungle');
+    if (!j || !alive(j) || ratio(j) < 0.8 || v.fightPhase % 2 === 0) return -1;
+    let best = -1;
+    v.camps.forEach((c, i) => {
+      if (c.owner === side || v.sides[side].campIntel[i]! >= 0) return;
+      if (best < 0 || distance(j.cell, c.cell) < distance(j.cell, v.camps[best]!.cell)) best = i;
+    });
+    return best;
   }
 
   /** Heroes an engage from `source` onto `target` would pull in, by side, as far as this side can see. */
@@ -236,8 +253,42 @@ class Tactician extends Novice {
           break;
         case 'shadowStep':
           break;
+        case 'move':
+          for (const c of CELLS.keys()) {
+            if (c !== source.cell && distance(source.cell, c) <= op.reach) offer({ kind: 'cell', cell: c }, this.moveWorth(v, side, source, c));
+          }
+          break;
+        case 'beacon':
+          for (const a of v.heroes) {
+            if (a.side === side && a !== source && known(a) && ratio(a) < 0.35 && near(99).some((e) => distance(e.cell, a.cell) <= 1)) offer({ kind: 'hero', uid: a.uid }, 4);
+          }
+          break;
       }
     }
     return best;
+  }
+
+  /**
+   * What moving `h` onto `cell` is worth: a low hero gets out of reach on
+   * the way home; a healthy one closes on a weakened enemy it and its
+   * friends there outweigh, never under a rival structure.
+   */
+  private moveWorth(v: MatchView, side: Side, h: Hero, cell: number): number {
+    const enemies = v.heroes.filter((e) => e.side !== side && known(e));
+    const gap = (c: number) => Math.min(9, ...enemies.map((e) => distance(e.cell, c)));
+    if (ratio(h) < 0.35) {
+      if (gap(h.cell) > 1) return 0;
+      return gap(cell) > 1 && distance(cell, CORE[side]) < distance(h.cell, CORE[side]) ? 4 : 0;
+    }
+    if (ratio(h) < 0.6 || v.structures.some((st) => st.side !== side && st.hp > 0 && st.cell === cell)) return 0;
+    const strength = (hs: Hero[]) => hs.reduce((t, x) => t + x.hp * stats(x).dmg, 0);
+    let worth = 0;
+    for (const e of enemies) {
+      if (distance(e.cell, cell) > 1 || distance(e.cell, h.cell) <= 1) continue;
+      const ours = [h, ...v.heroes.filter((a) => a.side === side && a !== h && known(a) && distance(a.cell, e.cell) <= 1)];
+      const edge = strength(ours) / Math.max(1, strength(enemies.filter((x) => distance(x.cell, e.cell) <= 1)));
+      if (edge > 1.5) worth = Math.max(worth, 2 + (1 - ratio(e)) * 3 + (cell === e.cell ? 0 : 0.5));
+    }
+    return worth;
   }
 }

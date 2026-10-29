@@ -60,7 +60,7 @@ export function kill(s: MatchState, h: Hero, killers: Hero[]): void {
   h.cell = CORE[h.side];
   h.stance = 'passive';
   h.retreating = false;
-  h.roam = -1;
+  h.camp = -1;
   s.events.push({ type: 'death', uid: h.uid });
   awardXp(s, killers, XP_HERO, XP_HERO);
 }

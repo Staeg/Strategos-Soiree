@@ -61,10 +61,19 @@ then free minions march, then camps refill, waves spawn, cards are drawn.
 - **Retreat**: below 40% HP (passive) or 20% (aggressive), a hero walks home on
   the next tick. **(gap fill)** The own core heals 25% max HP per tick; the hero
   heads back out at full HP. Dead heroes respawn at the core after 15 ticks.
-- **Orders**: stance toggle and roam, each once between fight phases. Death
-  resets stance to passive. Roam lasts until the next fight phase. **(open
-  question)** I made this once per team, not per hero; it is one constant
-  (`ORDERS_PER_PHASE`).
+  Walking home, a hero takes a shortest way, and of the equally short ones
+  the way with the most lane cells on it.
+- **No orders on the map.** Stances and the jungler's first camp are set in
+  the strategy stage of a fight phase; heroes move off their routes only
+  through motion cards. Death resets stance to passive.
+- **Jungler's camp**: the camp the strategy names comes first, own or rival,
+  until it is cleared or seen empty; then the jungler picks as below.
+- **Encounters**: when heroes of both sides stand together on a jungle cell
+  (usually a jungler raiding in aggressive stance), a fight phase starts at
+  once with the cards and mana the sides hold (no new mana). Heroes walking
+  home never start one. When any fight phase ends with both sides still on a
+  jungle cell, the hero lowest on HP there walks home, until only one side
+  holds the cell.
 - **Fog**: a side sees cells with its heroes, minions or structures, cells
   next to its standing structures, and map-ability/ultimate reveals. The AI
   and the client both only ever get this view (`viewFor`).
@@ -72,8 +81,9 @@ then free minions march, then camps refill, waves spawn, cards are drawn.
   shared between them; a creep gives its camp's XP, shared; hero kills 10 + 10 shared; a fallen tower 10
   to every enemy hero. Every 10 XP: +1 DMG, +10 HP, +1 RES (a tenth of the
   original rate). Shared XP is stored in 60ths so splits stay exact.
-- Every 10 ticks both sides draw; every 50 ticks the fight phase starts.
-  **(gap fill)** At 3000 ticks the side with more structure HP left wins.
+- Every 7 ticks both sides draw. A fight phase starts 50 ticks after the
+  last one ended (the first at tick 50). **(gap fill)** At 3000 ticks the side
+  with more structure HP left wins.
 
 ## Jungle camps
 
@@ -107,19 +117,30 @@ jungle and laners in their lanes. Over 200 seeds:
 
 ## Fight phase
 
-1. **Commit**: both sides get 10 mana (up to 10 more carried over) and play
-   cards blind, each naming a source hero and, if needed, a target. On
-   commit, unplayed cards beyond 5 are discarded (right-click picks which,
-   else the oldest go).
-2. **Reveal**: plays resolve by initiative, 0 first. Plays sharing an
-   initiative are checked and aimed against the state before any of them,
-   then applied together.
-3. **Clash**: the engagements an initiative started fight to the end before
-   the next initiative resolves, so a hero can fight twice in one phase. They
-   run side by side in fight ticks; a step jumps to the next tick where
-   someone acts, and heroes acting on the same tick go in a random order.
-   **(open question)** `INTERLEAVE` in `content.ts` switches back to "every
-   card first, then all fights".
+The match opens on a strategy stage, before the first map tick. Every fight
+phase after it runs three stages; in each, both sides commit blind, then
+everything is revealed. A scheduled fight phase gives both sides 10 mana (up
+to 10 more carried over), spent across all three stages; an encounter gives
+none. Every card names the stages it can be played in. A side holding no
+card for motion or play is in at once for that stage.
+
+1. **Motion**: move cards (Sprint, Roam, the special moves, Shadow Step,
+   Beacon) are aimed and checked against the board as it stood before any
+   of them, then all land together, with no initiative.
+2. **Play**: cards name a source hero and, if needed, a target, and resolve
+   by initiative, 0 first. Plays sharing an initiative are checked and aimed
+   against the state before any of them, then applied together. The
+   engagements an initiative started fight to the end before the next
+   initiative resolves, so a hero can fight twice in one phase. They run
+   side by side in fight ticks; a step jumps to the next tick where someone
+   acts, and heroes acting on the same tick go in a random order. **(open
+   question)** `INTERLEAVE` in `content.ts` switches back to "every card
+   first, then all fights".
+3. **Strategy**: each side sets the stance of any of its heroes and the camp
+   its jungler goes for first, and may play strategy cards (map-phase boons,
+   Hold the Line, Nightfall, Unwrite, a heal). All of it takes hold together.
+   As the strategy goes in, unplayed cards beyond 5 are discarded
+   (right-click picks which, else the oldest go).
 
 Card rules:
 
@@ -141,14 +162,20 @@ Card rules:
   one engagement. A hero acts every ceil(100 / SPD) fight ticks; its fight
   ability fires every Nth turn, other turns are basic attacks on its focus or
   a random enemy.
-- **Ultimates** (cooldowns in fight phases): Command (aimed on the map any
-  time in the map phase), Card (a unique card joins the hand at the next draw
-  when ready), Trigger (fires the moment its condition holds), Ascension
+- **Moves**: a move card's hero goes to the aimed cell, up to its reach
+  away. Sprint (0 mana) moves 1, Roam (1 mana) up to 3. Each mid laner and
+  jungler has a move of its own in place of its least interesting card:
+  Vespertine's Moonpath (Roam for 0 mana), Carrion Abacus's Updraught (up to
+  5), Moth Tenor's Flit (Sprint reaching 2) and Lacuna's Elision (Roam that
+  also plays in the play stage at initiative 1, between fights).
+- **Ultimates** (cooldowns in fight phases): Card (a unique card joins the
+  hand at the next draw when ready; Saint Halyard's Beacon is one now, played
+  in motion), Trigger (fires the moment its condition holds), Ascension
   (one-time, at a charge threshold).
 
 Deck: one copy of each hero's 3 cards plus one of each staple (Skirmish,
-Reinforce, Fall Back, Press the Attack, Second Wind, Hold the Line): 21
-cards. The discard pile is shuffled back in when the draw pile runs out.
+Reinforce, Fall Back, Press the Attack, Second Wind, Hold the Line) and two
+each of Sprint and Roam: 25 cards. The discard pile is shuffled back in when the draw pile runs out.
 Staples are played from whichever allied hero the player picks.
 
 ## Heroes

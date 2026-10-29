@@ -1,4 +1,4 @@
-import { distance } from './board.ts';
+import { N_CELLS, distance } from './board.ts';
 import { CARD_OWNER, cardDef, type CardId, type CardOp } from './content.ts';
 import { alive, atBase, maxHp } from './hero.ts';
 import { shadowCell } from './powers.ts';
@@ -9,7 +9,7 @@ import type { MatchView } from './vision.ts';
 export interface Reach {
   sources: number[];
   heroes: number[];
-  /** Cells of the structures it could land on. */
+  /** Cells of the structures it could land on, or for a move, the cells it could go to. */
   cells: number[];
 }
 
@@ -18,17 +18,18 @@ export interface Reach {
  * side's own fogged view: a source that may play it and a target in reach.
  * A card with no source here would fizzle as things stand. It is a forecast,
  * not a verdict: earlier cards can still move heroes before it resolves.
+ * `only` narrows it to one source hero, as when the card is being aimed.
  */
-export function cardReach(v: MatchView, side: Side, id: CardId): Reach {
+export function cardReach(v: MatchView, side: Side, id: CardId, only?: number): Reach {
   const def = cardDef(id);
   const owner = CARD_OWNER[id];
   // Rewind alone works from death or the base.
   const rewind = def.effect.some((op) => op.op === 'rewind');
-  const sources = v.heroes.filter((h) => h.side === side && (owner === undefined || h.id === owner)
+  const sources = v.heroes.filter((h) => h.side === side && (owner === undefined || h.id === owner) && (only === undefined || h.uid === only)
     && (rewind || (alive(h) && h.cell >= 0 && (owner === undefined || !atBase(h)))));
   const heroes = def.aim === 'enemy' || def.aim === 'siege' ? v.heroes.filter((h) => h.side !== side && alive(h) && h.cell >= 0)
     : def.aim === 'ally' ? v.heroes.filter((h) => h.side === side && alive(h) && h.cell >= 0) : [];
-  const cells = v.structures
+  const cells = def.aim === 'cell' ? Array.from({ length: N_CELLS }, (_, c) => c) : v.structures
     .filter((st) => st.hp > 0 && (def.aim === 'tower' ? st.side === side : def.aim === 'siege' && st.side !== side))
     .map((st) => st.cell);
 
@@ -58,6 +59,10 @@ function fits(op: CardOp, source: Hero, cell: number, target: Hero | null): bool
       return op.reach === undefined || distance(source.cell, cell) <= op.reach;
     case 'shell':
       return distance(source.cell, cell) <= op.reach;
+    case 'move':
+      return cell !== source.cell && distance(source.cell, cell) <= op.reach;
+    case 'beacon':
+      return target !== null && target.uid !== source.uid;
     default:
       return true;
   }
