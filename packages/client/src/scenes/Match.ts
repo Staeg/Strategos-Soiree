@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import {
-  CARD_OWNER, CARDS_KEPT, CORE, DRAW_EVERY, FIGHT_EVERY, LANE_NAMES, N_CELLS, TOWER_DMG, atBase, campDef, cardDef, cardReach, foe, heroDef, maxHp, stats,
-  type CardId, type GameEvent, type Hero, type MatchView, type Reach, type Side, type Target,
+  CARD_OWNER, CARDS_KEPT, CORE, DRAW_EVERY, FIGHT_EVERY, LANE_NAMES, N_CELLS, TOWER_DMG, atBase, campDef, cardDef, cardReach, distance, foe, heroDef, maxHp, stats,
+  type CardId, type GameEvent, type Hero, type MatchView, type Reach, type Side, type Stage, type Stance, type Target,
 } from '@soiree/sim';
 import { CAMP_ART } from '../art/camps.ts';
 import { heroKey, heroOriginX } from '../art/forge.ts';
@@ -25,6 +25,7 @@ const SLOTS: Record<Side, [number, number][]> = {
   1: [[6, 4], [1, 10], [11, 10], [7, -2], [12, 4]],
 };
 const SPEEDS = [0.5, 1, 2, 4];
+const STAGE_TITLE: Record<Stage, string> = { motion: 'Motion', play: 'Play', strategy: 'Strategy' };
 
 /** The hand fans along the bottom between the inspect panel and the fight console. */
 const HAND_CX = 300;
@@ -32,7 +33,7 @@ const HAND_SPAN = 300;
 const HAND_Y = H - 3 - CARD_H / 2;
 /** The fight console in the bottom-right corner. */
 const CON = { x: 474, y: 266, w: 162, h: 90 };
-/** Where your orders sit, under your cast. */
+/** Where your strategy sits, under your cast. */
 const ORDERS = { x: 4, y: 22 + 5 * 27 + 4 };
 /** The inspect panel: the rest of the left column, down to the corner buttons. */
 const PANEL = { x: 2, y: 186, w: 108, h: 155 };
@@ -57,8 +58,8 @@ type Adder = <T extends Phaser.GameObjects.GameObject>(o: T) => T;
 
 type Mode =
   | { kind: 'idle' }
-  | { kind: 'roam' }
-  | { kind: 'ult' }
+  /** Strategy: picking the camp your jungler goes for first. */
+  | { kind: 'camp' }
   /** Aiming a card: first a source hero (unless bound), then a target. */
   | { kind: 'card'; handIndex: number; source: number };
 
@@ -120,6 +121,7 @@ export class Match extends Phaser.Scene {
   private help!: Layer;
   private panel!: Layer;
   private toasts: Phaser.GameObjects.BitmapText[] = [];
+  private lastBanner: Phaser.GameObjects.BitmapText | null = null;
   private mode: Mode = { kind: 'idle' };
   private selected = -1;
   private hover = -1;
@@ -135,6 +137,8 @@ export class Match extends Phaser.Scene {
   /** What the inspect panel shows this frame, and for your own card, where it could land. */
   private shown: Inspect | null = null;
   private reach: Reach | null = null;
+  /** The reach is cells a hero could move to. */
+  private reachMoves = false;
   private discard = new Set<number>();
   private fogKey = -1;
   /** Cells lit by the hovered log line. */
@@ -168,6 +172,7 @@ export class Match extends Phaser.Scene {
     this.creeps = [];
     this.speedButtons = [];
     this.toasts = [];
+    this.lastBanner = null;
     this.mode = { kind: 'idle' };
     this.selected = -1;
     this.ctrl = false;
@@ -188,6 +193,10 @@ export class Match extends Phaser.Scene {
   private get v(): MatchView { return this.session.view; }
   private get me(): Side { return this.session.side; }
   private get planning(): boolean { return this.v.phase === 'plan' && !this.v.sides[this.me].committed; }
+  /** Drawing up the strategy: stances and the jungler's camp. */
+  private get drafting(): boolean { return this.planning && this.v.stage === 'strategy'; }
+  /** The stage cards may be played in right now, if any. */
+  private get stage(): Stage | null { return this.v.phase === 'plan' ? this.v.stage : null; }
 
   create(): void {
     // Two cameras: the main one may close in on the board, the HUD one never
@@ -253,7 +262,7 @@ export class Match extends Phaser.Scene {
     const events = this.session.update(this.game.loop.delta);
     this.log.record(this.v, this.session.prev, events);
     for (const e of events) this.react(e, time);
-    if (this.v.phase !== 'plan' && this.mode.kind === 'card') this.mode = { kind: 'idle' };
+    if ((this.mode.kind === 'card' && !this.planning) || (this.mode.kind === 'camp' && !this.drafting)) this.mode = { kind: 'idle' };
     const p = this.input.activePointer;
     this.logCells = this.log.hover(p.x, p.y);
     this.frame(time, delta);
@@ -261,8 +270,12 @@ export class Match extends Phaser.Scene {
     this.handHover = this.handAt(p);
     this.prunePin();
     this.shown = this.inspected(p);
-    const card = this.shown?.kind === 'card' && this.shown.side === this.me ? this.shown.card : undefined;
-    this.reach = card ? cardReach(this.v, this.me, card) : null;
+    // The card being aimed shows where it can land from its hero; else the inspected card, from any.
+    const aimed = this.mode.kind === 'card' ? this.v.sides[this.me].hand[this.mode.handIndex] : undefined;
+    const card = aimed ?? (this.shown?.kind === 'card' && this.shown.side === this.me ? this.shown.card : undefined);
+    const from = this.mode.kind === 'card' && this.mode.source >= 0 ? this.mode.source : undefined;
+    this.reach = card ? cardReach(this.v, this.me, card, aimed && from) : null;
+    this.reachMoves = card !== undefined && cardDef(card).aim === 'cell';
     this.roster.highlight = this.cardOwner();
     this.drawUnits(time);
     this.flourishes.update();
@@ -283,9 +296,8 @@ export class Match extends Phaser.Scene {
     const k = e.key.toLowerCase();
     if (k === 'escape') { this.mode = { kind: 'idle' }; this.pinned = null; }
     else if (k === ' ') this.session.paused = !this.session.paused;
-    else if (k === 's') this.orderStance();
-    else if (k === 'r') this.beginOrder('roam');
-    else if (k === 'u') this.beginOrder('ult');
+    else if (k === 's') this.toggleStance();
+    else if (k === 'c') this.beginCamp();
     else if (k === 'l') this.log.toggle();
     else if (k === 'z') this.autoZoom = !this.autoZoom;
     else if (k === 'enter' && this.v.phase === 'plan') this.commit();
@@ -297,13 +309,26 @@ export class Match extends Phaser.Scene {
     return h && h.side === this.me ? h : undefined;
   }
 
-  private orderStance(): void {
-    const h = this.own(this.selected);
-    if (h && this.v.phase === 'map') this.session.submit({ type: 'stance', uid: h.uid });
+  /** A hero's stance as your strategy has it: the one being drawn up, else the one it holds. */
+  private stanceOf(h: Hero): Stance {
+    if (h.side !== this.me || this.v.phase !== 'plan' || this.v.stage !== 'strategy') return h.stance;
+    const i = this.v.heroes.filter((o) => o.side === this.me).indexOf(h);
+    return this.v.sides[this.me].strategy.stances[i] ?? h.stance;
   }
 
-  private beginOrder(kind: 'roam' | 'ult'): void {
-    if (this.v.phase === 'map' && this.own(this.selected)) this.mode = { kind };
+  /** The camp your jungler goes for first, as your strategy has it, or -1. */
+  private campOf(): number {
+    if (this.v.phase === 'plan' && this.v.stage === 'strategy') return this.v.sides[this.me].strategy.camp;
+    return this.v.heroes.find((h) => h.side === this.me && h.role === 'jungle')?.camp ?? -1;
+  }
+
+  private toggleStance(): void {
+    const h = this.own(this.selected);
+    if (h && this.drafting) this.session.submit({ type: 'stance', uid: h.uid, stance: this.stanceOf(h) === 'passive' ? 'aggressive' : 'passive' });
+  }
+
+  private beginCamp(): void {
+    if (this.drafting) this.mode = this.mode.kind === 'camp' ? { kind: 'idle' } : { kind: 'camp' };
   }
 
   /** Heroes drawn near a screen point, nearest first. */
@@ -395,8 +420,9 @@ export class Match extends Phaser.Scene {
     const again = this.same(this.pinned, pin);
     this.pinned = again ? null : pin;
     if (!this.planning) return;
+    const def = cardDef(me.hand[i]!);
     if (again && this.mode.kind === 'card' && this.mode.handIndex === i) this.mode = { kind: 'idle' };
-    else if (!again && cardDef(me.hand[i]!).cost <= me.mana) this.pickCard(i);
+    else if (!again && def.cost <= me.mana && def.stages.includes(this.v.stage)) this.pickCard(i);
   }
 
   private clickBoard(p: Phaser.Input.Pointer): void {
@@ -404,8 +430,10 @@ export class Match extends Phaser.Scene {
     const cell = cellAtPoint(x, y);
     const near = this.heroesNear(x, y);
     const mode = this.mode;
-    if (mode.kind === 'roam' || mode.kind === 'ult') {
-      if (cell >= 0) this.session.submit({ type: mode.kind, uid: this.selected, cell });
+    if (mode.kind === 'camp') {
+      // Again on the chosen camp leaves the choice to the jungler.
+      const camp = this.v.camps.findIndex((c) => c.cell === cell);
+      if (camp >= 0) this.session.submit({ type: 'camp', camp: camp === this.campOf() ? -1 : camp });
       this.mode = { kind: 'idle' };
       return;
     }
@@ -436,6 +464,10 @@ export class Match extends Phaser.Scene {
       const st = this.v.structures.find((x) => x.cell === cell && x.side !== this.me && x.hp > 0);
       if (t) this.play(mode.handIndex, mode.source, { kind: 'hero', uid: t.uid });
       else if (st) this.play(mode.handIndex, mode.source, { kind: 'cell', cell });
+    } else if (def.aim === 'cell') {
+      const from = this.v.heroes[mode.source]!.cell;
+      const reach = Math.max(0, ...def.effect.map((op) => (op.op === 'move' ? op.reach : 0)));
+      if (cell >= 0 && cell !== from && distance(from, cell) <= reach) this.play(mode.handIndex, mode.source, { kind: 'cell', cell });
     }
   }
 
@@ -606,8 +638,12 @@ export class Match extends Phaser.Scene {
       g.fillStyle(CREAM, 0.12 + 0.08 * Math.sin(time / 140)).fillPoints(hexPoints(c, 1), true);
       g.lineStyle(px, CREAM, 0.9).strokePoints(hexPoints(c, 1), true);
     }
-    // The structures your inspected card could land on.
-    for (const c of this.reach?.cells ?? []) g.lineStyle(px, BLOOD, pulse).strokePoints(hexPoints(c, 2), true);
+    // The structures your inspected card could land on, or the cells it could move a hero to.
+    for (const c of this.reach?.cells ?? []) g.lineStyle(px, this.reachMoves ? LEAF : BLOOD, pulse).strokePoints(hexPoints(c, 2), true);
+    // The camp your jungler goes for first; while picking one, every camp.
+    if (this.mode.kind === 'camp') for (const c of v.camps) g.lineStyle(px, CREAM, 0.4 + 0.3 * pulse).strokePoints(hexPoints(c.cell, 3), true);
+    const camp = v.camps[this.campOf()];
+    if (camp) corners(g, { x: cellX(camp.cell), y: cellY(camp.cell) - 4 * px }, 12, GOLD, pulse, px);
     // A pinned structure or camp keeps a ring, so you can find it again.
     const spot = this.pinned?.kind === 'structure' ? v.structures[this.pinned.index]?.cell : this.pinned?.kind === 'camp' ? v.camps[this.pinned.index]?.cell : undefined;
     if (spot !== undefined) g.lineStyle(px, CREAM, 0.5 + 0.3 * Math.sin(time / 150)).strokePoints(hexPoints(spot, 1), true);
@@ -624,8 +660,9 @@ export class Match extends Phaser.Scene {
       const before = prev.heroes[h.uid] && this.heroPos(prev, prev.heroes[h.uid]!);
       hv.sprite.setVisible(now !== null);
       if (!now) continue;
-      // Map ticks walk heroes over the step that follows, exactly as minions walk.
-      const moving = before && prev.phase === 'map' && (before.x !== now.x || before.y !== now.y);
+      // Map ticks walk heroes over the step that follows, exactly as minions walk; so do motion cards.
+      const walked = prev.phase === 'map' || (prev.phase === 'resolve' && prev.stage === 'motion');
+      const moving = before && walked && (before.x !== now.x || before.y !== now.y);
       const x = moving ? Phaser.Math.Linear(before.x, now.x, alpha) : now.x;
       const y = moving ? Phaser.Math.Linear(before.y, now.y, alpha) : now.y;
       const reach = Math.sin(Math.PI * Phaser.Math.Clamp((time - hv.lunge.at) / 220, 0, 1)) * px;
@@ -640,7 +677,7 @@ export class Match extends Phaser.Scene {
       const [bx, by] = [sx - 5 * px, sy - 17 * px];
       bars.fillStyle(INK).fillRect(bx, by, 10 * px, 3 * px);
       bars.fillStyle(h.retreating ? GOLD : TEAM[h.side].main).fillRect(bx + px, by + px, Math.max(1, Math.ceil((8 * h.hp) / max)) * px, px);
-      if (h.stance === 'aggressive') bars.fillStyle(BLOOD).fillRect(bx + 10 * px, by, 2 * px, 3 * px);
+      if (this.stanceOf(h) === 'aggressive') bars.fillStyle(BLOOD).fillRect(bx + 10 * px, by, 2 * px, 3 * px);
       // The owner of the inspected card is called out in gold.
       if (h.uid === this.roster.highlight) {
         bars.lineStyle(px, GOLD, pulse).strokeRect(sx - 8 * px, sy - 15 * px, 16 * px, 17 * px);
@@ -652,7 +689,6 @@ export class Match extends Phaser.Scene {
       if (h.uid === this.selected || h.uid === this.roster.hovered) {
         const ring = h.uid === this.selected ? 0.6 + 0.4 * Math.sin(time / 150) : 0.5;
         bars.lineStyle(px, CREAM, ring).strokeRect(sx - 7 * px, sy - 14 * px, 14 * px, 15 * px);
-        if (h.roam >= 0 && h.side === this.me) bars.lineStyle(px, CREAM, 0.5).strokePoints(hexPoints(h.roam, 4), true);
       }
     }
   }
@@ -749,13 +785,17 @@ export class Match extends Phaser.Scene {
         this.toast(`${who}: ${def.name}${e.fizzle ? ` fizzles (${e.fizzle})` : ''}`, TEAM[e.play.side].light);
         return;
       }
+      case 'encounter':
+        this.burst(cellX(e.cell), cellY(e.cell) - 4, 'spark', 3);
+        this.toast('Rivals meet in the jungle: a fight phase at once', GOLD);
+        return;
       case 'engage':
         this.burst(cellX(e.cell), cellY(e.cell) - 4, 'spark', 3);
         // Alone at the table, the match holds its breath while the camera closes in.
         if (this.session.solo) this.session.paused = true;
         return;
       case 'phase':
-        if (e.phase === 'plan') this.banner('Fight phase');
+        if (e.phase === 'plan' && e.stage) this.banner(STAGE_TITLE[e.stage]);
         if (e.phase === 'resolve' && v.initiative < 0) this.banner('Reveal');
         if (e.phase === 'map') this.discard.clear();
         if (e.phase === 'over') this.finale();
@@ -798,8 +838,10 @@ export class Match extends Phaser.Scene {
     this.tweens.add({ targets: t, y: y - 10 * this.lens, alpha: 0, duration: 700, ease: 'Quad.out', onComplete: () => t.destroy() });
   }
 
+  /** A title across the board; a newer one replaces it at once, so stages passing in one step never pile up. */
   private banner(label: string): void {
-    const t = centred(this, W / 2, 64, label, GOLD, 2).setDepth(3000).setAlpha(0);
+    this.lastBanner?.destroy();
+    const t = this.lastBanner = centred(this, W / 2, 64, label, GOLD, 2).setDepth(3000).setAlpha(0);
     this.tweens.add({ targets: t, alpha: 1, duration: 250, hold: 900, yoyo: true, onComplete: () => t.destroy() });
   }
 
@@ -819,15 +861,16 @@ export class Match extends Phaser.Scene {
       g.fillStyle(TEAM[side].main).fillRect(side === this.me ? x : x + w - fill, 5, fill, 6);
       g.fillStyle(TEAM[side].light).fillRect(side === this.me ? x : x + w - fill, 5, fill, 1);
     }
-    const phaseName = { map: 'map', plan: 'commit', resolve: 'reveal', clash: 'clash', over: 'the end' }[v.phase];
+    const phaseName = v.phase === 'plan' ? v.stage : v.phase === 'resolve' && v.stage !== 'play' ? v.stage
+      : { map: 'map', resolve: 'reveal', clash: 'clash', over: 'the end' }[v.phase];
     this.phaseLabel.setText(`${phaseName}${v.phase === 'map' || v.fightPhase === 0 ? '' : ` #${v.fightPhase}`}`.toUpperCase()).setTint(v.phase === 'map' ? CREAM : GOLD);
 
-    const toFight = FIGHT_EVERY - (v.mapTick % FIGHT_EVERY);
+    const toFight = v.nextFight - v.mapTick;
     const toDraw = DRAW_EVERY - (v.mapTick % DRAW_EVERY);
     this.clock.setText(`TICK ${v.mapTick}  ${v.phase === 'clash' ? `FIGHT TICK ${v.fightTick}` : v.phase === 'map' ? `FIGHT IN ${toFight}  DRAW IN ${toDraw}` : ''}`);
     if (v.phase === 'map') {
       g.fillStyle(NIGHT).fillRect(108, 12, 96, 2);
-      g.fillStyle(GOLD).fillRect(108, 12, Math.round((96 * (FIGHT_EVERY - toFight)) / FIGHT_EVERY), 2);
+      g.fillStyle(GOLD).fillRect(108, 12, Math.round((96 * Math.max(0, FIGHT_EVERY - toFight)) / FIGHT_EVERY), 2);
     }
     const s = this.session;
     this.speedButtons.forEach((b, i) => b.setSelected(i === 0 ? s.paused : !s.paused && s.speed === SPEEDS[i - 1]));
@@ -835,11 +878,11 @@ export class Match extends Phaser.Scene {
     const aiming = this.mode.kind === 'card' && this.mode.source < 0 ? 'click the hero who plays it' : 'click its target';
     const fighting = v.phase === 'resolve' || v.phase === 'clash';
     const idle = s.paused && fighting ? 'paused   space resumes'
-      : this.shown?.kind === 'card' && !this.ctrl ? 'hold ctrl for the full rules' : '';
+      : this.shown?.kind === 'card' && !this.ctrl ? 'hold ctrl for the full rules'
+        : this.drafting ? 'stances (s), a camp (c), then commit' : '';
     const hints: Record<Mode['kind'], string> = {
       idle,
-      roam: 'click a cell to roam to   esc cancels',
-      ult: 'click a cell to aim the ultimate   esc cancels',
+      camp: 'click a camp for your jungler   esc cancels',
       card: `${aiming}   esc cancels`,
     };
     const hint = this.hint.setText(hints[this.mode.kind].toUpperCase());
@@ -869,18 +912,20 @@ export class Match extends Phaser.Scene {
   /**
    * The hand along the bottom, in every phase; playable only while
    * committing. A card nobody could play as things stand (its hero down,
-   * nothing in reach) lies under a veil; one you cannot afford is faded.
+   * nothing in reach, not a card of this stage) lies under a veil; one you
+   * cannot afford is faded.
    */
   private drawHand(): void {
     const v = this.v;
     const me = v.sides[this.me];
     const xs = this.handXs();
     const aimingAt = this.mode.kind === 'card' ? this.mode.handIndex : -1;
-    const usable = me.hand.map((id) => cardReach(v, this.me, id).sources.length > 0);
+    const now = this.stage;
+    const usable = me.hand.map((id) => cardReach(v, this.me, id).sources.length > 0 && (!now || cardDef(id).stages.includes(now)));
     const pin = this.pinned?.kind === 'card' && this.pinned.side === this.me ? this.pinned.card : undefined;
     const hover = this.handHover;
 
-    this.hand.draw([me.hand, xs, this.planning, me.mana, aimingAt, [...this.discard], hover, usable, pin], (add) => {
+    this.hand.draw([me.hand, xs, this.planning, me.mana, aimingAt, [...this.discard], hover, usable, pin, now], (add) => {
       me.hand.forEach((id, i) => {
         const face = add(cardFace(this, id, this.me));
         const lift = i === aimingAt ? 6 : i === hover ? 3 : 0;
@@ -906,7 +951,7 @@ export class Match extends Phaser.Scene {
   private drawPanel(): void {
     const v = this.v;
     const it = this.shown;
-    this.panel.draw([it, this.ctrl, v.seq, v.sides[this.me].mana, this.reach?.sources.length ?? 0], (add) => {
+    this.panel.draw([it, this.ctrl, v.seq, v.sides[this.me].mana, this.reach?.sources.length ?? 0, this.stage], (add) => {
       if (!it) return;
       if (it.kind === 'card') return this.panelCard(add, it.card, it.side);
       const { x, y, w, h } = PANEL;
@@ -939,7 +984,9 @@ export class Match extends Phaser.Scene {
     if (side !== this.me) return;
     const owner = CARD_OWNER[card];
     const bound = owner && this.v.heroes.find((o) => o.side === this.me && o.id === owner);
-    const why = this.reach?.sources.length ? (this.planning && cardDef(card).cost > this.v.sides[this.me].mana ? 'not enough mana' : '')
+    const stages = cardDef(card).stages;
+    const why = this.stage && !stages.includes(this.stage) ? `not a ${this.stage} card`
+      : this.reach?.sources.length ? (this.planning && cardDef(card).cost > this.v.sides[this.me].mana ? 'not enough mana' : '')
       : bound && bound.respawnAt >= 0 ? `${heroDef(bound.id).name} is down`
         : bound && atBase(bound) ? `${heroDef(bound.id).name} is at base` : 'nothing in reach';
     if (!why) return;
@@ -1026,7 +1073,7 @@ export class Match extends Phaser.Scene {
     const rival = v.sides[foe(this.me)];
     const fighting = v.phase !== 'map' && v.phase !== 'over';
     const moment = v.phase === 'plan' ? [me.plays, me.committed, rival.committed, v.rivalHand] : fighting ? [v.seq] : [me.hand.length, me.deck.length, me.discard.length, v.rivalHand, me.mana, rival.mana];
-    this.console.draw([v.phase, moment, this.planning, me.hand.length, me.mana], (add) => {
+    this.console.draw([v.phase, v.stage, moment, this.planning, me.hand.length, me.mana], (add) => {
       this.timelineHover = null;
       const { x, y, w, h } = CON;
       const g = add(this.add.graphics());
@@ -1045,21 +1092,23 @@ export class Match extends Phaser.Scene {
         return;
       }
 
-      const status = v.phase !== 'plan' ? 'initiative' : rival.committed ? 'rival has committed' : 'rival is thinking';
-      add(text(this, x + 5, y + 16, status.toUpperCase(), MAUVE));
+      // In play, cards line up by initiative; motion and strategy resolve all at once, in the order played.
+      const timed = v.stage === 'play';
+      const status = v.phase !== 'plan' ? (timed ? 'initiative' : 'all at once') : rival.committed ? 'rival has committed' : 'rival is thinking';
+      add(text(this, x + 5, y + 16, `${v.stage}: ${status}`.toUpperCase(), MAUVE));
       // The timeline: your plays above the line, the rival's below, initiative 0 to 9.
       const tx = x + 1 + 1, ty = y + 26, slot = 16;
-      const current = v.phase === 'resolve' ? (v.pending[0] ?? 10) : v.phase === 'clash' ? v.initiative : -1;
+      const current = !timed ? -1 : v.phase === 'resolve' ? (v.pending[0] ?? 10) : v.phase === 'clash' ? v.initiative : -1;
       for (let i = 0; i < 10; i++) {
         const sx = tx + i * slot;
         g.fillStyle(i < current ? DUSK : PLUM).fillRect(sx, ty, slot - 1, 31);
         g.fillStyle(INK).fillRect(sx, ty + 15, slot - 1, 1);
-        add(centred(this, sx + slot / 2, ty + 36, String(i), i === current ? GOLD : MAUVE));
+        if (timed) add(centred(this, sx + slot / 2, ty + 36, String(i), i === current ? GOLD : MAUVE));
       }
       for (const [side, row] of [[this.me, 0], [foe(this.me), 1]] as const) {
         const perSlot = new Map<number, number>();
         v.sides[side].plays.forEach((pl, index) => {
-          const ini = cardDef(pl.card).initiative;
+          const ini = timed ? cardDef(pl.card).initiative : Math.floor(index / 2);
           const k = perSlot.get(ini) ?? 0;
           perSlot.set(ini, k + 1);
           const icon = add(this.add.image(tx + ini * slot + 4 + (k % 2) * 7, ty + row * 16 + 4 + Math.floor(k / 2) * 6, iconKey(pl.card, side)));
@@ -1072,43 +1121,35 @@ export class Match extends Phaser.Scene {
       }
       if (v.phase === 'plan') {
         const over = me.hand.length - CARDS_KEPT;
-        if (this.planning && over > 0) add(text(this, x + 5, y + h - 21, `keeps ${CARDS_KEPT}: right-click to discard`.toUpperCase(), MAUVE));
+        if (this.drafting && over > 0) add(text(this, x + 5, y + h - 21, `keeps ${CARDS_KEPT}: right-click to discard`.toUpperCase(), MAUVE));
         add(button(this, x + w - 46, y + h - 10, 88, me.committed ? 'waiting...' : 'commit (enter)', () => this.commit())).setEnabled(this.planning);
       }
     });
   }
 
-  /** Under your bars, above the inspect panel: orders for the selected hero, while the map runs. */
+  /**
+   * Under your bars, above the inspect panel: your strategy while it is
+   * drawn up, the selected hero's stance and your jungler's first camp.
+   */
   private drawOrders(): void {
     const v = this.v;
     const h = this.own(this.selected);
-    const orders = v.sides[this.me].orders;
-    const map = v.phase === 'map';
-    const rival = h ? undefined : this.v.heroes[this.selected];
-    const key = map && h ? [h.uid, h.stance, h.respawnAt >= 0, h.ultReadyAt, v.fightPhase, orders, this.mode.kind] : [map, rival?.uid];
+    const drafting = this.drafting;
+    const camp = this.campOf();
+    const key = [drafting, h?.uid, h && this.stanceOf(h), camp, this.mode.kind];
     this.orders.draw(key, (add) => {
       const { x, y } = ORDERS;
-      if (!map) return;
-      if (rival) {
-        add(text(this, x, y, 'watching a rival:\nclick one of yours\nto give orders'.toUpperCase(), MAUVE));
+      const where = v.camps[camp];
+      const goes = where ? `jungler: ${campDef(where.kind).name}${where.owner === this.me ? '' : ' (rival)'}` : 'jungler: its own way';
+      if (!drafting) {
+        add(text(this, x, y, `${goes}\norders wait for strategy`.toUpperCase(), MAUVE));
         return;
       }
-      if (!h) {
-        add(text(this, x, y, 'click a hero\nto give orders'.toUpperCase(), MAUVE));
-        return;
-      }
-      const def = heroDef(h.id);
-      const alive = h.respawnAt < 0;
-      add(text(this, x, y, `orders: ${orders.stance} stance ${orders.roam} roam`.toUpperCase(), MAUVE));
-      // One row of three, so the panel below keeps its room.
-      add(button(this, x + 17, y + 15, 34, h.stance === 'passive' ? 'aggr s' : 'pass s', () => this.orderStance()))
-        .setEnabled(alive && orders.stance > 0);
-      add(button(this, x + 53, y + 15, 34, 'roam r', () => this.beginOrder('roam')))
-        .setEnabled(alive && orders.roam > 0).setSelected(this.mode.kind === 'roam');
-      if (def.ult.kind === 'command') {
-        add(button(this, x + 89, y + 15, 34, 'ult u', () => this.beginOrder('ult')))
-          .setEnabled(alive && v.fightPhase >= h.ultReadyAt).setSelected(this.mode.kind === 'ult');
-      }
+      add(text(this, x, y, goes.toUpperCase(), GOLD));
+      if (h) {
+        add(button(this, x + 17, y + 15, 34, this.stanceOf(h) === 'passive' ? 'aggr s' : 'pass s', () => this.toggleStance()));
+      } else add(text(this, x, y + 12, 'click a hero'.toUpperCase(), MAUVE));
+      add(button(this, x + 53, y + 15, 34, 'camp c', () => this.beginCamp())).setSelected(this.mode.kind === 'camp');
     });
   }
 
@@ -1121,10 +1162,9 @@ export class Match extends Phaser.Scene {
         ['click', 'select a hero or its bar, either side'],
         ['click card', 'pin it beside you; play it (commit)'],
         ['click tower', 'or camp: pin its stats beside you'],
-        ['s', 'toggle passive / aggressive'],
-        ['r', 'roam to a cell'],
-        ['u', 'aim a command ultimate'],
-        ['right-click', 'mark a card to discard'],
+        ['s', 'strategy: toggle passive / aggressive'],
+        ['c', 'strategy: the camp your jungler goes for'],
+        ['right-click', 'mark a card to discard (strategy)'],
         ['enter', 'commit your cards'],
         ['esc', 'cancel aiming, let go of a pin'],
         ['hold ctrl', 'a card\'s full rules'],

@@ -9,13 +9,21 @@ export type Role = 'top' | 'jungle' | 'mid' | 'support' | 'carry';
 export type Stance = 'passive' | 'aggressive';
 
 /**
- * The match loops through four phases:
+ * The match loops through these phases:
  *  map      real-time-ish; one step is one map tick (about a second).
- *  plan     both sides commit cards blind; steps idle until both are in.
- *  resolve  one step per initiative value that has cards on it.
+ *  plan     both sides commit blind for the current stage; steps idle until both are in.
+ *  resolve  one step per initiative value that has cards on it (one step in all for motion and strategy).
  *  clash    one step per fight tick in which somebody acts; empty ticks are skipped.
  */
 export type Phase = 'map' | 'plan' | 'resolve' | 'clash' | 'over';
+
+/**
+ * A fight phase runs through three stages, each planned blind and revealed:
+ *  motion    heroes move, all at once, with no initiative.
+ *  play      cards resolve by initiative and engagements are fought.
+ *  strategy  stances and the jungler's first camp for the coming map phase.
+ */
+export type Stage = 'motion' | 'play' | 'strategy';
 
 export interface Stats {
   dmg: number;
@@ -101,8 +109,8 @@ export interface Hero {
   xp: number;
   stance: Stance;
   retreating: boolean;
-  /** Roam destination until the next fight phase, or -1. */
-  roam: number;
+  /** The camp a jungler goes for first, by index, until it is cleared or seen empty; or -1. */
+  camp: number;
   /** Map tick the hero returns, or -1 while alive. */
   respawnAt: number;
   /** Map tick the map ability is next ready. */
@@ -204,8 +212,11 @@ export interface SideState {
   discard: CardId[];
   plays: Play[];
   committed: boolean;
-  /** Orders left this map phase. */
-  orders: { stance: number; roam: number };
+  /**
+   * The strategy being drawn up blind: the stance each of the side's heroes
+   * takes, in uid order, and the camp its jungler goes for first (or -1).
+   */
+  strategy: { stances: Stance[]; camp: number };
   /** Per camp: map tick this side last saw it empty, or -1 if believed up. */
   campIntel: number[];
   /** Until this map tick the side sees only the cells its units stand on. */
@@ -221,6 +232,10 @@ export interface MatchState {
   fightPhase: number;
   fightTick: number;
   phase: Phase;
+  /** The stage of the fight phase being planned or resolved; meaningless on the map. */
+  stage: Stage;
+  /** Map tick the next fight phase is called. */
+  nextFight: number;
   heroes: Hero[];
   minions: MinionStack[];
   structures: Structure[];
@@ -239,10 +254,10 @@ export interface MatchState {
 }
 
 export type Command =
-  | { type: 'stance'; side: Side; uid: number }
-  | { type: 'roam'; side: Side; uid: number; cell: number }
-  /** Command-type ultimates, aimed on the map. */
-  | { type: 'ult'; side: Side; uid: number; cell: number }
+  /** Strategy: the stance a hero takes once both sides are in. */
+  | { type: 'stance'; side: Side; uid: number; stance: Stance }
+  /** Strategy: the camp, by index, the jungler goes for first; -1 leaves it to the jungler. */
+  | { type: 'camp'; side: Side; camp: number }
   | { type: 'play'; side: Side; handIndex: number; source: number; target: Target }
   | { type: 'unplay'; side: Side; index: number }
   /** `discard` lists hand indices to drop first if more than CARDS_KEPT stay unplayed. */
@@ -251,9 +266,11 @@ export type Command =
 export type Fizzle = 'source' | 'target' | 'reach' | 'evaded' | 'engaged' | 'cancelled' | 'none';
 
 export type GameEvent =
-  | { type: 'phase'; phase: Phase }
+  | { type: 'phase'; phase: Phase; stage?: Stage }
+  /** Heroes of both sides met off the lanes, on `cell`: a fight phase starts at once. */
+  | { type: 'encounter'; cell: number }
   | { type: 'draw'; side: Side }
-  | { type: 'order'; side: Side; uid: number; order: 'stance' | 'roam' | 'ult' }
+  | { type: 'order'; side: Side; uid: number; order: 'stance' | 'camp' | 'ult' }
   | { type: 'minions'; cell: number; side: Side; died: number }
   /** `n` minions of `side` walked from index `pos` of `lane` to the next cell along it. */
   | { type: 'march'; lane: LaneId; pos: number; side: Side; n: number }

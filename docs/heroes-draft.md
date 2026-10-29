@@ -50,6 +50,15 @@ New heroes pick an unused pair before anything else is drawn.
 These fill gaps in the match design. They are the bits the engine and the
 roster both depend on, so they are worth agreeing on early.
 
+- **Stages**: a fight phase runs motion, then play, then strategy, and every
+  card names the stages it can be played in. Motion cards move heroes and
+  resolve all at once; play is the initiative ladder below; strategy cards
+  set up the coming map phase. In the tables, an Init of **M** or **S** marks
+  a card played only in motion or only in strategy; a number is a play card,
+  and *(+S)* or *(+M)* adds a second stage.
+- **Special moves**: each mid laner and jungler trades its least interesting
+  card for a move of its own that outdoes a staple (Sprint: 0 mana, 1 hex;
+  Roam: 1 mana, up to 3) in one big way.
 - **Initiative** runs 0 to 9 and resolves ascending: 0 first, 9 last. Equal
   initiative is simultaneous. Rough bands: 0–1 setup and information, 2–4
   protection, tricks and the Tactics that shape fights, 5–8 engages, 7–9
@@ -74,7 +83,7 @@ roster both depend on, so they are worth agreeing on early.
   initiative.
 - **No reveal cards.** Cards resolve simultaneously and the map moves on
   before you could use what they show, so vision lives on map abilities
-  and Command ultimates only.
+  only.
 - **Bound**: every hero card is bound; it fizzles if its hero is dead or at
   base when it resolves. (Hidden keyword, shown with Alt.)
 - **Shield**: absorbs damage, gone at the end of the fight phase.
@@ -84,8 +93,6 @@ roster both depend on, so they are worth agreeing on early.
   are basic attacks.
 - **Map abilities** run on their own, every N map ticks.
 - **Ultimate categories** (cooldowns in fight phases):
-  - *Command*: a third command the player aims on the map, usable any time
-    in the map phase.
   - *Card*: when ready, a unique card enters your hand at the next draw. It
     never enters the deck and goes back on cooldown when played.
   - *Trigger*: fires by itself in a fight when its condition is met.
@@ -171,7 +178,7 @@ ultimate to keep her standing.
 |---|---|---|---|---|
 | Snuff | 3 | 5 | Engage (1, 30) | A short, early, brutal fight. |
 | Hot Wax | 2 | 3 | Tactic | Her target has its SPD halved for the first 20 ticks. |
-| Rekindle | 1 | 1 | — | Heal 25% max HP. |
+| Rekindle | 1 | 1 (+S) | — | Heal 25% max HP. |
 
 ### Gnomon
 `HP 1000 · DMG 110 · RES 20 · SPD 12`
@@ -195,7 +202,7 @@ in a fixed direction regardless of where he faces. Verdigris and bronze.
 |---|---|---|---|---|
 | High Noon | 2 | 5 | Engage (1, 50) | One target only: nobody else can Join this engagement. |
 | Hour Hand | 1 | 2 | Tactic | Gnomon takes his first turn on the first tick of his engagement, whatever his SPD. |
-| Shadow Step | 2 | 3 | — | Gnomon steps one lane cell ahead, into the hex his Long Shadow covers (out of reach of Engages measured from his old hex). |
+| Shadow Step | 2 | M | — | Gnomon steps one lane cell ahead, into the hex his Long Shadow covers. |
 
 ### Mother Sprue
 `HP 1300 · DMG 85 · RES 25 · SPD 7`
@@ -283,14 +290,14 @@ know where.
   structure.
 - **Fight · Puncture** (every 2nd turn): 180% DMG to the lowest-HP enemy; if
   it kills, she takes another turn at once.
-- **Ultimate · Nightfall** (Card, 4): *Nightfall* costs 3, initiative 1:
+- **Ultimate · Nightfall** (Card, 4): *Nightfall* costs 3, strategy:
   until the next fight phase, the enemy sees only the hexes their own units
   stand on (towers lose their adjacent vision too).
 
 | Card | Cost | Init | Keywords | Effect |
 |---|---|---|---|---|
 | Out of the Dark | 2 | 2 | Engage (1, 25) | Very early, very short. |
-| Star Pin | 1 | 4 | Tactic | In her next engagement, all allies attack a chosen enemy for the first 15 ticks. |
+| Moonpath | 0 | M | — | She moves up to 3 hexes: Roam for nothing. Replaced Star Pin. |
 | Fade | 1 | 4 | Tactic | Vespertine leaves her next engagement after its 10th tick and returns to the nearest jungle hex. |
 
 ### Carrion Abacus
@@ -312,7 +319,7 @@ is already hurt.
 | Card | Cost | Init | Keywords | Effect |
 |---|---|---|---|---|
 | Circling | 2 | 6 | Engage (2, 40) | Only targets a hero below 60% HP. |
-| Count the Bones | 0 | 3 | — | Gain 3 Beads. |
+| Updraught | 1 | M | — | He moves up to 5 hexes: Roam with two more. Replaced Count the Bones. |
 | Sum of Debts | 3 | 8 | Join (2) | His first turn in his next engagement is a Reckon. |
 
 ## Mid
@@ -385,8 +392,8 @@ themselves.
 | Card | Cost | Init | Keywords | Effect |
 |---|---|---|---|---|
 | Lure | 2 | 6 | Engage (2, 50) | Fought on his hex. |
-| Dust of Wings | 1 | 3 | Tactic | In his next engagement, every enemy has −3 SPD for the first 20 ticks. |
-| Lamp Season | 2 | 2 | — | Allied minions in his lane hit twice as often next map phase. |
+| Flit | 0 | M | — | He moves up to 2 hexes: Sprint with twice the reach. Replaced Dust of Wings. |
+| Lamp Season | 2 | S | — | Allied minions in his lane hit twice as often next map phase. |
 
 ### Lacuna
 `HP 700 · DMG 130 · RES 20 · SPD 9`
@@ -409,9 +416,9 @@ your opponent.
 
 | Card | Cost | Init | Keywords | Effect |
 |---|---|---|---|---|
-| Negative Space | 3 | 6 | Engage (2, 50) | — |
-| Unwrite | 2 | 2 | — | An enemy hero within 3 hexes loses its map ability until the next fight phase. |
-| Silence Between | 0 | 9 | — | The opponent can save 1 fewer card this phase (a random one goes). |
+| Elision | 1 | 1 (+M) | — | Lacuna moves up to 3 hexes, in motion or between fights in play: Roam that also plays at initiative 1. Replaced Negative Space. |
+| Unwrite | 2 | S | — | An enemy hero within 3 hexes loses its map ability until the next fight phase. |
+| Silence Between | 0 | 9 (+S) | — | The opponent can save 1 fewer card this phase (a random one goes). |
 
 ## Support
 
@@ -428,8 +435,8 @@ lamp.
   through the six directions like a lighthouse sweep.
 - **Fight · Lampward** (every 2nd turn): the lowest-HP ally gains a Shield
   of 200 + her DMG.
-- **Ultimate · Beacon** (Command, 4): an allied hero anywhere on the map
-  arrives on her hex at the next map tick.
+- **Ultimate · Beacon** (Card, 4): *Beacon* costs 2, motion: an allied hero
+  anywhere on the map arrives on her hex.
 
 | Card | Cost | Init | Keywords | Effect |
 |---|---|---|---|---|
@@ -455,8 +462,8 @@ a tray floating at its shoulder. Wine burgundy and bottle green.
 | Card | Cost | Init | Keywords | Effect |
 |---|---|---|---|---|
 | Spiked Cup | 2 | 6 | Engage (1, 50) | The target takes double damage for the first 10 ticks. |
-| Second Glass | 1 | 8 | — | Allied heroes within 2 hexes heal 15%. |
-| Vintage | 2 | 9 | — | Allied minions on her hex hit twice as often next map phase. |
+| Second Glass | 1 | 8 (+S) | — | Allied heroes within 2 hexes heal 15%. |
+| Vintage | 2 | S | — | Allied minions on her hex hit twice as often next map phase. |
 
 ### Orrery
 `HP 950 · DMG 75 · RES 25 · SPD 8`
@@ -588,23 +595,25 @@ incense smoke from the barrel. Polished brass on black iron.
 
 | Card | Cost | Init | Keywords | Effect |
 |---|---|---|---|---|
-| Fuse | 2 | 7 | — | Next map phase she kills one more minion per tick. |
-| Tamp Powder | 1 | 2 | — | Bombard fires every 2 ticks next map phase. |
+| Fuse | 2 | S | — | Next map phase she kills one more minion per tick. |
+| Tamp Powder | 1 | S | — | Bombard fires every 2 ticks next map phase. |
 | Brace | 1 | 3 | Tactic | +40 RES and +4 SPD in her next engagement. |
 
 ## Staples
 
-Neutral cards every deck carries one of. They name no hero: the player
+Neutral cards every deck carries one of (two of Sprint and Roam). They name no hero: the player
 picks which allied hero plays each one.
 
 | Card | Cost | Init | Keywords | Effect |
 |---|---|---|---|---|
+| Sprint (×2) | 0 | M | — | That hero moves 1 hex. |
+| Roam (×2) | 1 | M | — | That hero moves up to 3 hexes. |
 | Skirmish | 3 | 5 | Engage (1, 50) | The plain engage. |
 | Reinforce | 2 | 6 | Join (2) | — |
 | Fall Back | 1 | 2 | — | Engage cards with a later initiative cannot target that hero this phase. |
 | Press the Attack | 1 | 4 | Tactic | Allies in that hero's next engagement deal +20% DMG for the first 15 ticks. |
-| Second Wind | 2 | 8 | — | Heal that hero 25%. |
-| Hold the Line | 2 | 3 | — | An allied tower takes half damage until the next fight phase. |
+| Second Wind | 2 | 8 (+S) | — | Heal that hero 25%. |
+| Hold the Line | 2 | S | — | An allied tower takes half damage until the next fight phase. |
 
 ## Open questions
 

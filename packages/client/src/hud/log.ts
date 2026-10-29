@@ -121,7 +121,7 @@ function cellsOf(v: MatchView, prev: MatchView, e: GameEvent): number[] {
         const t = e.play.target;
         return [...hero(e.play.source), ...(t.kind === 'hero' ? hero(t.uid) : t.kind === 'cell' ? [t.cell] : [])];
       }
-      case 'engage': return [e.cell];
+      case 'engage': case 'encounter': return [e.cell];
       case 'act': return [...hero(e.uid), ...e.hits.flatMap((h) => hero(h.uid))];
       case 'squad': case 'disengage': return fight(e.id);
       case 'phase': case 'draw': case 'march': return [];
@@ -137,7 +137,8 @@ function describe(v: MatchView, e: GameEvent, me: Side): string {
   };
   const side = (s: Side) => (s === me ? 'you' : 'rival');
   switch (e.type) {
-    case 'phase': return `-- ${e.phase} --`;
+    case 'phase': return `-- ${e.stage ?? e.phase} --`;
+    case 'encounter': return `rivals meet at cell ${e.cell}`;
     case 'draw': return `${side(e.side)} drew a card`;
     case 'order': return `${side(e.side)} order ${e.order}: ${hero(e.uid)}`;
     case 'march': return '';

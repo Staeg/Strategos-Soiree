@@ -200,7 +200,7 @@ export class Roster {
     const hp = `hp${Math.max(0, h.hp)}/${maxHp(h)}`;
     if (live.respawnAt >= 0) return [`xp ${xp}  down: back in ${live.respawnAt - v.mapTick}`, special(v, h).join('  ')];
     if (!fresh) return ever ? [`${hp} ${fight} xp ${xp}`, ''] : ['never seen', `hp full at the start ${fight}`];
-    const doing = h.retreating ? 'retreating' : h.roam >= 0 ? 'roaming' : h.fx.engagement >= 0 ? 'fighting' : '';
+    const doing = h.retreating ? 'retreating' : h.fx.engagement >= 0 ? 'fighting' : '';
     return [
       `xp ${xp} ${hp} ${fight}`,
       [doing, ...special(v, h)].filter(Boolean).join('  '),

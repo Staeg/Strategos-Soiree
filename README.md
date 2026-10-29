@@ -1,10 +1,13 @@
 # Strategos Soirée
 
 A shotcaller's MOBA: five heroes walk their lanes and camps on a hex map by
-themselves while you rewire them with a few scarce orders (stance, roam).
-Every 50 map ticks the match stops for a **fight phase**: both sides commit
-cards blind, reveal, resolve them by initiative, and each initiative's
-engagements play out in fight ticks before the next resolves.
+themselves, and you only steer them between map phases. Every 50 map ticks,
+or at once when rivals meet in the jungle, the match stops for a **fight
+phase** in three stages, each committed blind and then revealed: **motion**
+(heroes move, all at once), **play** (cards resolve by initiative, and each
+initiative's engagements play out in fight ticks before the next resolves)
+and **strategy** (stances, the jungler's first camp, and map-phase cards).
+The match opens on a strategy stage.
 
 This is the rough structure with the first ten heroes (two per role: before
 each match you pick one of each pair and the rival fields the other), against an AI of two difficulties, with
@@ -24,7 +27,7 @@ npm run build        # static site in packages/client/dist
 
 ## Saves and bug reports
 
-The game auto-saves as a match begins and as every fight phase opens; the
+The game auto-saves as a match begins and as every stage of a fight phase opens; the
 title screen then offers **Continue**. A save is the match's setup plus the
 journal of the player's commands, which replays the match exactly (AI
 included), with a snapshot of the full state as a fallback for saves from an
@@ -76,7 +79,10 @@ right as their figures, each under a health bar and beside three clocks for
 its map ability, fight ability and ultimate (hover a bar to slide it out with
 the name and the rest; rivals out of sight are greyed and show only what was
 last seen), the board in the middle, the hand along the bottom in every
-phase, and mana and the initiative timeline bottom right. HP, DMG, RES and SPD
+phase, and mana and the initiative timeline bottom right. Each card shows the
+stages it plays in (M, P, S) in its corner. During strategy the controls
+under your cast set the selected hero's stance (**s**) and your jungler's
+first camp (**c**, then click a camp). HP, DMG, RES and SPD
 are drawn as a heart, sword, shield and boot everywhere.
 
 Under your cast sits the **inspect panel**: it shows whatever the pointer is

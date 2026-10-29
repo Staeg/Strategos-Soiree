@@ -165,3 +165,35 @@ export function stepToward(from: number, to: number, side: Side): number {
   }
   return from;
 }
+
+/**
+ * For each cell, the most lane cells any shortest path from it to each core
+ * crosses. Walking home, a hero takes the step that keeps this highest: of
+ * the equally short ways back, the one that stays on the lanes longest.
+ */
+const LANE_WAY: Record<Side, Int8Array> = (() => {
+  const way = (side: Side) => {
+    const d = DIST[CORE[side]]!;
+    const best = new Int8Array(N_CELLS);
+    const order = CELLS.map((_, i) => i).sort((a, b) => d[a]! - d[b]!);
+    for (const c of order) {
+      const onward = NEIGHBOURS[c]!.filter((n) => n >= 0 && d[n] === d[c]! - 1);
+      best[c] = (isLane(c) ? 1 : 0) + Math.max(0, ...onward.map((n) => best[n]!));
+    }
+    return best;
+  };
+  return { 0: way(0), 1: way(1) };
+})();
+
+/** A step home along the shortest way that keeps to the lanes the most. */
+export function stepHome(from: number, side: Side): number {
+  const home = CORE[side];
+  if (from === home) return from;
+  const d = DIST[home]!, way = LANE_WAY[side];
+  let best = from;
+  for (let k = 0; k < 6; k++) {
+    const n = NEIGHBOURS[from]![side === 0 ? k : 5 - k]!;
+    if (n >= 0 && d[n] === d[from]! - 1 && (best === from || way[n]! > way[best]!)) best = n;
+  }
+  return best;
+}

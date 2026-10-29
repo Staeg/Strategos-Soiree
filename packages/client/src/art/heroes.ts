@@ -149,5 +149,6 @@ export const CARD_ICONS = {
   reveal: ['........', '..oooo..', '.occcco.', 'occttcco', 'occttcco', '.occcco.', '..oooo..', '........'],
   evade: ['.....ll.', '....lll.', '...lll..', '..lll...', '.lll....', 'lll.....', '.l......', '........'],
   strike: ['w..w..w.', 'w..w..w.', 'w..w..w.', 'm..m..m.', 'h..h..h.', '........', '.oooooo.', '........'],
+  move: ['....l...', '....ll..', 'd.d.lll.', 'tttlllll', 'd.d.lll.', '....ll..', '....l...', '........'],
   heal: ['...LL...', '...LL...', '.LLLLLL.', '.LLLLLL.', '...LL...', '...LL...', '........', '........'],
 } satisfies Record<string, string[]>;

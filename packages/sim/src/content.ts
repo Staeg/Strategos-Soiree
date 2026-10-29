@@ -1,11 +1,11 @@
-import type { LaneId, Role, Stance, Stats } from './types.ts';
+import type { LaneId, Role, Stage, Stance, Stats } from './types.ts';
 
 /**
  * Rules numbers. Everything balance-related lives here so the arena script
  * can sweep it without touching rules code.
  */
 export const FIGHT_EVERY = 50;
-export const DRAW_EVERY = 10;
+export const DRAW_EVERY = 7;
 export const WAVE_EVERY = 8;
 export const WAVE_SIZE = 12;
 export const MAX_MAP_TICKS = 3000;
@@ -36,9 +36,6 @@ export const XP_PER_STAT = 10;
 export const XP_MINION = 1;
 export const XP_HERO = 10;
 export const XP_TOWER = 10;
-
-/** How many of each order a side may give between fight phases. */
-export const ORDERS_PER_PHASE = { stance: 1, roam: 1 } as const;
 
 export interface StanceDef {
   /** Minions killed per map tick on the hero's cell; against camps, DMG dealt in multiples of the hero's. */
@@ -151,11 +148,6 @@ export type MapOp =
   /** Aura: each enemy minion the hero kills is a charge; every `per` charges grant `grow`. */
   | { op: 'carve'; per: number; grow: Partial<Stats> };
 
-/** Command ultimates, aimed at a cell on the map. */
-export type CommandOp =
-  /** An allied hero on the aimed cell arrives on the caster's cell. */
-  | { op: 'beacon' };
-
 /** Who a fight op lands on. `target` is the focus if set, else a random enemy. */
 export type Pick = 'target' | 'weakest' | 'fastest';
 
@@ -256,7 +248,11 @@ export type CardOp =
   /** Next map phase: the hero kills `n` more minions a tick. */
   | { op: 'clear'; n: number }
   /** Next map phase: the map ability runs every `every` ticks. */
-  | { op: 'cadence'; every: number };
+  | { op: 'cadence'; every: number }
+  /** The hero moves to the aimed cell, up to `reach` cells away. */
+  | { op: 'move'; reach: number }
+  /** The aimed ally arrives on the hero's cell. */
+  | { op: 'beacon' };
 
 export const ARMED: ReadonlySet<CardOp['op']> = new Set(['join', 'empower', 'focus', 'slow', 'expose', 'quick', 'fade', 'firstHit', 'opening', 'procession']);
 export const isArmed = (op: CardOp): op is ArmedOp => ARMED.has(op.op);
@@ -271,13 +267,15 @@ export const KEYWORD_TEXT: Record<Keyword, string> = {
   Ultimate: 'a hero ultimate; goes back on cooldown when played',
 };
 
-/** What the player aims a card at, besides choosing its source hero. `siege`: an enemy hero or structure. */
-export type Aim = 'none' | 'enemy' | 'ally' | 'tower' | 'siege';
+/** What the player aims a card at, besides choosing its source hero. `siege`: an enemy hero or structure; `cell`: any cell. */
+export type Aim = 'none' | 'enemy' | 'ally' | 'tower' | 'siege' | 'cell';
 
 export interface CardDef {
   name: string;
   cost: number;
-  /** 0-9, resolved ascending; equal initiatives resolve simultaneously. */
+  /** The stages of a fight phase the card may be played in. */
+  stages: readonly Stage[];
+  /** 0-9, resolved ascending in the play stage; equal initiatives resolve simultaneously. Motion and strategy have none. */
   initiative: number;
   keywords: readonly Keyword[];
   aim: Aim;
@@ -290,7 +288,6 @@ export interface MapAbility { name: string; text: string; every: number; op: Map
 export interface FightAbility { name: string; text: string; /** Fires on turns every, 2*every, ... */ every: number; op: FightOp }
 
 export type Ultimate =
-  | { kind: 'command'; name: string; text: string; cooldown: number; op: CommandOp; range: number }
   | { kind: 'card'; name: string; text: string; cooldown: number; card: CardId }
   | { kind: 'trigger'; name: string; text: string; cooldown: number; when: Trigger; op: TriggerOp }
   /** One-time, once the hero holds `charge` charges; `sweep` makes basic attacks hit every enemy. */
@@ -309,80 +306,88 @@ export interface HeroDef {
 
 // ---- cards -----------------------------------------------------------------
 
-const card = (name: string, cost: number, initiative: number, keywords: Keyword[], aim: Aim, effect: CardOp[], text: string): CardDef =>
-  ({ name, cost, initiative, keywords, aim, effect, text });
+const card = (name: string, cost: number, stages: Stage[], initiative: number, keywords: Keyword[], aim: Aim, effect: CardOp[], text: string): CardDef =>
+  ({ name, cost, stages, initiative, keywords, aim, effect, text });
 
 const B = 'Bound' as const;
+/** Stage tags. Cards that cannot be played in the play stage carry initiative 0, which nothing reads. */
+const M: Stage[] = ['motion'], P: Stage[] = ['play'], S: Stage[] = ['strategy'];
+const MP: Stage[] = ['motion', 'play'], PS: Stage[] = ['play', 'strategy'];
 
 export const CARDS = {
-  // Staples: one each per deck, played from whichever allied hero the player picks.
-  skirmish: card('Skirmish', 3, 5, ['Engage'], 'enemy', [{ op: 'engage', reach: 1, length: 50 }], 'Target hero engages an enemy hero within 1.'),
-  reinforce: card('Reinforce', 2, 6, ['Join'], 'none', [{ op: 'join', reach: 2 }], 'Target hero joins a nearby fight.'),
-  fallBack: card('Fall Back', 1, 2, [], 'none', [{ op: 'evade' }], 'Later engages cannot target the target hero.'),
-  pressTheAttack: card('Press the Attack', 1, 4, ['Tactic'], 'none', [{ op: 'empower', who: 'engagement', dmgPct: 20, ticks: 15 }], "In target hero's next fight, allies there +20% DMG for 15 ticks."),
-  secondWind: card('Second Wind', 2, 8, [], 'none', [{ op: 'heal', pct: 25 }], 'Target hero heals 25%.'),
-  holdTheLine: card('Hold the Line', 2, 3, [], 'tower', [{ op: 'guardTower' }], 'Target allied tower takes half damage until the next fight phase.'),
+  // Staples: one each per deck (two of Sprint and Roam), played from whichever allied hero the player picks.
+  sprint: card('Sprint', 0, M, 0, [], 'cell', [{ op: 'move', reach: 1 }], 'Target hero moves 1 cell.'),
+  roam: card('Roam', 1, M, 0, [], 'cell', [{ op: 'move', reach: 3 }], 'Target hero moves up to 3 cells.'),
+  skirmish: card('Skirmish', 3, P, 5, ['Engage'], 'enemy', [{ op: 'engage', reach: 1, length: 50 }], 'Target hero engages an enemy hero within 1.'),
+  reinforce: card('Reinforce', 2, P, 6, ['Join'], 'none', [{ op: 'join', reach: 2 }], 'Target hero joins a nearby fight.'),
+  fallBack: card('Fall Back', 1, P, 2, [], 'none', [{ op: 'evade' }], 'Later engages cannot target the target hero.'),
+  pressTheAttack: card('Press the Attack', 1, P, 4, ['Tactic'], 'none', [{ op: 'empower', who: 'engagement', dmgPct: 20, ticks: 15 }], "In target hero's next fight, allies there +20% DMG for 15 ticks."),
+  secondWind: card('Second Wind', 2, PS, 8, [], 'none', [{ op: 'heal', pct: 25 }], 'Target hero heals 25%.'),
+  holdTheLine: card('Hold the Line', 2, S, 0, [], 'tower', [{ op: 'guardTower' }], 'Target allied tower takes half damage until the next fight phase.'),
 
   // The Tallow Duchess
-  snuff: card('Snuff', 3, 5, ['Engage', B], 'enemy', [{ op: 'engage', reach: 1, length: 30 }], 'Engage (1, 30).'),
-  hotWax: card('Hot Wax', 2, 3, ['Tactic', B], 'enemy', [{ op: 'slow', who: 'target', pct: 50, ticks: 20 }], "In the Duchess's next fight, the target has half SPD for 20 ticks."),
-  rekindle: card('Rekindle', 1, 1, [B], 'none', [{ op: 'heal', pct: 25 }], 'The Duchess heals 25%.'),
+  snuff: card('Snuff', 3, P, 5, ['Engage', B], 'enemy', [{ op: 'engage', reach: 1, length: 30 }], 'Engage (1, 30).'),
+  hotWax: card('Hot Wax', 2, P, 3, ['Tactic', B], 'enemy', [{ op: 'slow', who: 'target', pct: 50, ticks: 20 }], "In the Duchess's next fight, the target has half SPD for 20 ticks."),
+  rekindle: card('Rekindle', 1, PS, 1, [B], 'none', [{ op: 'heal', pct: 25 }], 'The Duchess heals 25%.'),
 
   // Gnomon
-  highNoon: card('High Noon', 2, 5, ['Engage', B], 'enemy', [{ op: 'engage', reach: 1, length: 50, duel: true }], 'Gnomon engages (1, 50) the target alone; nobody may join.'),
-  hourHand: card('Hour Hand', 1, 2, ['Tactic', B], 'none', [{ op: 'quick' }], "Gnomon's first turn in the next fight comes on tick 1."),
-  shadowStep: card('Shadow Step', 2, 3, [B], 'none', [{ op: 'shadowStep' }], 'Gnomon steps one lane cell ahead, into the Long Shadow.'),
-  rewind: card('Rewind', 4, 9, [B, 'Ultimate'], 'none', [{ op: 'rewind' }], "Gnomon's HP and place go back to the start of the phase, even from death."),
+  highNoon: card('High Noon', 2, P, 5, ['Engage', B], 'enemy', [{ op: 'engage', reach: 1, length: 50, duel: true }], 'Gnomon engages (1, 50) the target alone; nobody may join.'),
+  hourHand: card('Hour Hand', 1, P, 2, ['Tactic', B], 'none', [{ op: 'quick' }], "Gnomon's first turn in the next fight comes on tick 1."),
+  shadowStep: card('Shadow Step', 2, M, 0, [B], 'none', [{ op: 'shadowStep' }], 'Gnomon steps one lane cell ahead, into the Long Shadow.'),
+  rewind: card('Rewind', 4, P, 9, [B, 'Ultimate'], 'none', [{ op: 'rewind' }], "Gnomon's HP and place go back to the start of the phase, even from death."),
 
   // Vespertine
-  outOfTheDark: card('Out of the Dark', 2, 2, ['Engage', B], 'enemy', [{ op: 'engage', reach: 1, length: 25 }], 'Engage (1, 25).'),
-  starPin: card('Star Pin', 1, 4, ['Tactic', B], 'enemy', [{ op: 'focus', ticks: 15 }], "In Vespertine's next fight, every ally attacks the target for 15 ticks."),
-  fade: card('Fade', 1, 4, ['Tactic', B], 'none', [{ op: 'fade', tick: 10 }], 'Vespertine leaves the next fight after tick 10.'),
-  nightfall: card('Nightfall', 3, 1, [B, 'Ultimate'], 'none', [{ op: 'nightfall' }], 'Until the next fight phase the enemy sees only where it stands.'),
+  outOfTheDark: card('Out of the Dark', 2, P, 2, ['Engage', B], 'enemy', [{ op: 'engage', reach: 1, length: 25 }], 'Engage (1, 25).'),
+  moonpath: card('Moonpath', 0, M, 0, [B], 'cell', [{ op: 'move', reach: 3 }], 'Vespertine moves up to 3 cells, for nothing.'),
+  fade: card('Fade', 1, P, 4, ['Tactic', B], 'none', [{ op: 'fade', tick: 10 }], 'Vespertine leaves the next fight after tick 10.'),
+  nightfall: card('Nightfall', 3, S, 0, [B, 'Ultimate'], 'none', [{ op: 'nightfall' }], 'Until the next fight phase the enemy sees only where it stands.'),
 
   // Carrion Abacus
-  circling: card('Circling', 2, 6, ['Engage', B], 'enemy', [{ op: 'engage', reach: 2, length: 40, below: 60 }], 'Engage (2, 40) a hero under 60% HP.'),
-  countTheBones: card('Count the Bones', 0, 3, [B], 'none', [{ op: 'charge', n: 3, max: 10 }], 'Carrion Abacus gains 3 Beads.'),
-  sumOfDebts: card('Sum of Debts', 3, 8, ['Join', B], 'none', [{ op: 'join', reach: 2 }, { op: 'opening' }], "Carrion Abacus joins (2); the Abacus's first turn there is a Reckon."),
+  circling: card('Circling', 2, P, 6, ['Engage', B], 'enemy', [{ op: 'engage', reach: 2, length: 40, below: 60 }], 'Engage (2, 40) a hero under 60% HP.'),
+  updraught: card('Updraught', 1, M, 0, [B], 'cell', [{ op: 'move', reach: 5 }], 'Carrion Abacus moves up to 5 cells.'),
+  sumOfDebts: card('Sum of Debts', 3, P, 8, ['Join', B], 'none', [{ op: 'join', reach: 2 }, { op: 'opening' }], "Carrion Abacus joins (2); the Abacus's first turn there is a Reckon."),
 
   // Moth Tenor
-  lure: card('Lure', 2, 6, ['Engage', B], 'enemy', [{ op: 'engage', reach: 2, length: 50, pull: true }], "Engage (2, 50), fought on Moth Tenor's cell."),
-  dustOfWings: card('Dust of Wings', 1, 3, ['Tactic', B], 'none', [{ op: 'slow', who: 'enemies', spd: 3, ticks: 20 }], "In Moth Tenor's next fight, every enemy -3 SPD for 20 ticks."),
-  lampSeason: card('Lamp Season', 2, 2, [B], 'none', [{ op: 'rally', where: 'lane' }], "Next map phase, allied minions in Moth Tenor's lane strike twice as often."),
-  lanternProcession: card('Lantern Procession', 3, 3, [B, 'Ultimate'], 'none', [{ op: 'procession', n: 6 }], "Up to 6 allied minions near Moth Tenor fight beside the Tenor in the next fight."),
+  lure: card('Lure', 2, P, 6, ['Engage', B], 'enemy', [{ op: 'engage', reach: 2, length: 50, pull: true }], "Engage (2, 50), fought on Moth Tenor's cell."),
+  flit: card('Flit', 0, M, 0, [B], 'cell', [{ op: 'move', reach: 2 }], 'Moth Tenor moves up to 2 cells.'),
+  lampSeason: card('Lamp Season', 2, S, 0, [B], 'none', [{ op: 'rally', where: 'lane' }], "Next map phase, allied minions in Moth Tenor's lane strike twice as often."),
+  lanternProcession: card('Lantern Procession', 3, P, 3, [B, 'Ultimate'], 'none', [{ op: 'procession', n: 6 }], "Up to 6 allied minions near Moth Tenor fight beside the Tenor in the next fight."),
 
   // Lacuna
-  negativeSpace: card('Negative Space', 3, 6, ['Engage', B], 'enemy', [{ op: 'engage', reach: 2, length: 50 }], 'Engage (2, 50).'),
-  unwrite: card('Unwrite', 2, 2, [B], 'enemy', [{ op: 'unwrite', reach: 3 }], 'An enemy within 3 loses its map ability until the next fight phase.'),
-  silenceBetween: card('Silence Between', 0, 9, [B], 'none', [{ op: 'squeeze' }], 'The opponent keeps one card fewer.'),
-  lacuna: card('Lacuna', 2, 0, [B, 'Ultimate'], 'none', [{ op: 'cancel' }], "Cancel the opponent's costliest later card."),
+  elision: card('Elision', 1, MP, 1, [B], 'cell', [{ op: 'move', reach: 3 }], 'Lacuna moves up to 3 cells, in motion or between fights.'),
+  unwrite: card('Unwrite', 2, S, 0, [B], 'enemy', [{ op: 'unwrite', reach: 3 }], 'An enemy within 3 loses its map ability until the next fight phase.'),
+  silenceBetween: card('Silence Between', 0, PS, 9, [B], 'none', [{ op: 'squeeze' }], 'The opponent keeps one card fewer.'),
+  lacuna: card('Lacuna', 2, P, 0, [B, 'Ultimate'], 'none', [{ op: 'cancel' }], "Cancel the opponent's costliest later card."),
 
   // Saint Halyard
-  rescueLine: card('Rescue Line', 2, 2, [B], 'ally', [{ op: 'evade', reach: 2 }], 'An ally within 2 is out of reach of later engages.'),
-  foghorn: card('Foghorn', 2, 5, ['Engage', B], 'enemy', [{ op: 'engage', reach: 2, length: 30 }], 'Engage (2, 30).'),
-  keepersOath: card("Keeper's Oath", 1, 4, ['Join', B], 'none', [{ op: 'join', reach: 2 }, { op: 'empower', who: 'engagement', res: 20 }], 'Join (2); allies there +20 RES.'),
+  rescueLine: card('Rescue Line', 2, P, 2, [B], 'ally', [{ op: 'evade', reach: 2 }], 'An ally within 2 is out of reach of later engages.'),
+  foghorn: card('Foghorn', 2, P, 5, ['Engage', B], 'enemy', [{ op: 'engage', reach: 2, length: 30 }], 'Engage (2, 30).'),
+  keepersOath: card("Keeper's Oath", 1, P, 4, ['Join', B], 'none', [{ op: 'join', reach: 2 }, { op: 'empower', who: 'engagement', res: 20 }], 'Join (2); allies there +20 RES.'),
+  beacon: card('Beacon', 2, M, 0, [B, 'Ultimate'], 'ally', [{ op: 'beacon' }], 'An allied hero anywhere arrives on her cell.'),
 
   // Vintner Ghast
-  spikedCup: card('Spiked Cup', 2, 6, ['Engage', B], 'enemy', [{ op: 'engage', reach: 1, length: 50 }, { op: 'expose', pct: 100, ticks: 10 }], 'Engage (1, 50); the target takes double damage for 10 ticks.'),
-  secondGlass: card('Second Glass', 1, 8, [B], 'none', [{ op: 'heal', pct: 15, reach: 2 }], 'Allies within 2 heal 15%.'),
-  vintage: card('Vintage', 2, 9, [B], 'none', [{ op: 'rally', where: 'cell' }], "Next map phase, allied minions on Vintner Ghast's cell strike twice as often."),
+  spikedCup: card('Spiked Cup', 2, P, 6, ['Engage', B], 'enemy', [{ op: 'engage', reach: 1, length: 50 }, { op: 'expose', pct: 100, ticks: 10 }], 'Engage (1, 50); the target takes double damage for 10 ticks.'),
+  secondGlass: card('Second Glass', 1, PS, 8, [B], 'none', [{ op: 'heal', pct: 15, reach: 2 }], 'Allies within 2 heal 15%.'),
+  vintage: card('Vintage', 2, S, 0, [B], 'none', [{ op: 'rally', where: 'cell' }], "Next map phase, allied minions on Vintner Ghast's cell strike twice as often."),
 
   // Scrimshander
-  killLine: card('Kill Line', 3, 8, ['Engage', B], 'enemy', [{ op: 'engage', reach: 1, length: 40 }], 'Engage (1, 40).'),
-  boneNeedle: card('Bone Needle', 1, 2, ['Tactic', B], 'none', [{ op: 'firstHit', pct: 200 }], "Scrimshander's first attack in the next fight deals 200% DMG."),
-  ivoryWard: card('Ivory Ward', 2, 2, [B], 'none', [{ op: 'evade' }], 'Later engages cannot target Scrimshander.'),
+  killLine: card('Kill Line', 3, P, 8, ['Engage', B], 'enemy', [{ op: 'engage', reach: 1, length: 40 }], 'Engage (1, 40).'),
+  boneNeedle: card('Bone Needle', 1, P, 2, ['Tactic', B], 'none', [{ op: 'firstHit', pct: 200 }], "Scrimshander's first attack in the next fight deals 200% DMG."),
+  ivoryWard: card('Ivory Ward', 2, P, 2, [B], 'none', [{ op: 'evade' }], 'Later engages cannot target Scrimshander.'),
 
   // Brass Reliquary
-  fuse: card('Fuse', 2, 7, [B], 'none', [{ op: 'clear', n: 1 }], 'Next map phase, Brass Reliquary kills one more minion a tick.'),
-  tampPowder: card('Tamp Powder', 1, 2, [B], 'none', [{ op: 'cadence', every: 2 }], 'Next map phase, Bombard fires every 2 ticks.'),
-  brace: card('Brace', 1, 3, ['Tactic', B], 'none', [{ op: 'empower', who: 'source', res: 40, spd: 4 }], "In Brass Reliquary's next fight, the Reliquary gets +40 RES, +4 SPD."),
-  relicShell: card('Relic Shell', 4, 9, [B, 'Ultimate'], 'siege', [{ op: 'shell', amount: 600, reach: 4 }], '600 damage to an enemy hero or structure within 4.'),
+  fuse: card('Fuse', 2, S, 0, [B], 'none', [{ op: 'clear', n: 1 }], 'Next map phase, Brass Reliquary kills one more minion a tick.'),
+  tampPowder: card('Tamp Powder', 1, S, 0, [B], 'none', [{ op: 'cadence', every: 2 }], 'Next map phase, Bombard fires every 2 ticks.'),
+  brace: card('Brace', 1, P, 3, ['Tactic', B], 'none', [{ op: 'empower', who: 'source', res: 40, spd: 4 }], "In Brass Reliquary's next fight, the Reliquary gets +40 RES, +4 SPD."),
+  relicShell: card('Relic Shell', 4, P, 9, [B, 'Ultimate'], 'siege', [{ op: 'shell', amount: 600, reach: 4 }], '600 damage to an enemy hero or structure within 4.'),
 } as const satisfies Record<string, CardDef>;
 
 export type CardId = keyof typeof CARDS;
 export const CARD_IDS = Object.keys(CARDS) as CardId[];
 export const cardDef = (id: CardId): CardDef => CARDS[id];
-export const STAPLES: CardId[] = ['skirmish', 'reinforce', 'fallBack', 'pressTheAttack', 'secondWind', 'holdTheLine'];
+export const STAPLES: CardId[] = ['sprint', 'roam', 'skirmish', 'reinforce', 'fallBack', 'pressTheAttack', 'secondWind', 'holdTheLine'];
+/** Staples that go into the deck twice. */
+export const DOUBLED: CardId[] = ['sprint', 'roam'];
 
 // ---- heroes ----------------------------------------------------------------
 
@@ -409,7 +414,7 @@ export const HEROES = {
     map: { name: 'Dusk', text: 'Seen only on the same cell as an enemy hero or structure.', every: 0, op: { op: 'dusk' } },
     fight: { name: 'Puncture', text: '180% DMG to the weakest enemy; a kill grants another turn.', every: 2, op: { op: 'strike', pct: 180, pick: 'weakest', again: true } },
     ult: { kind: 'card', name: 'Nightfall', text: 'A card: the enemy sees only where it stands until the next fight phase.', cooldown: 4, card: 'nightfall' },
-    cards: ['outOfTheDark', 'starPin', 'fade'],
+    cards: ['outOfTheDark', 'moonpath', 'fade'],
   },
   carrionAbacus: {
     name: 'Carrion Abacus', role: 'jungle',
@@ -417,7 +422,7 @@ export const HEROES = {
     map: { name: 'Glean', text: 'Aggressive: kills an enemy minion next to him, takes its XP and a Bead (max 10).', every: 4, op: { op: 'glean', n: 1, store: 10 } },
     fight: { name: 'Reckon', text: 'DMG +15% per Bead, then spends 5 Beads.', every: 3, op: { op: 'strike', pct: 100, pick: 'target', perCharge: 15, spend: 5 } },
     ult: { kind: 'trigger', name: 'Final Count', text: 'A hero dies within 2: +5 Beads and his next turn is a Reckon.', cooldown: 2, when: { on: 'death', range: 2 }, op: { op: 'tally', n: 5 } },
-    cards: ['circling', 'countTheBones', 'sumOfDebts'],
+    cards: ['circling', 'updraught', 'sumOfDebts'],
   },
   mothTenor: {
     name: 'Moth Tenor', role: 'mid',
@@ -425,7 +430,7 @@ export const HEROES = {
     map: { name: 'Aria', text: 'An enemy minion on or next to him changes sides; he earns it as a kill.', every: 6, op: { op: 'convert', n: 1 } },
     fight: { name: 'Swoon', text: 'The target spends its next turn attacking an ally.', every: 3, op: { op: 'swoon' } },
     ult: { kind: 'card', name: 'Lantern Procession', text: 'A card: allied minions near him fight beside him.', cooldown: 4, card: 'lanternProcession' },
-    cards: ['lure', 'dustOfWings', 'lampSeason'],
+    cards: ['lure', 'flit', 'lampSeason'],
   },
   lacuna: {
     name: 'Lacuna', role: 'mid',
@@ -433,14 +438,14 @@ export const HEROES = {
     map: { name: 'Erase', text: 'Kills 2 enemy minions on its cell and stores them as Void (max 12).', every: 10, op: { op: 'cull', n: 2, store: 12 } },
     fight: { name: 'Unmake', text: '2 Void per enemy in the fight: the target loses its next fight ability.', every: 3, op: { op: 'unmake', cost: 2 } },
     ult: { kind: 'card', name: 'Lacuna', text: "A card: cancel the opponent's costliest later card.", cooldown: 4, card: 'lacuna' },
-    cards: ['negativeSpace', 'unwrite', 'silenceBetween'],
+    cards: ['elision', 'unwrite', 'silenceBetween'],
   },
   saintHalyard: {
     name: 'Saint Halyard', role: 'support',
     stats: { hp: 1000, dmg: 60, res: 30, spd: 9 },
     map: { name: 'Beam', text: 'Lights a cell 3 away, sweeping round like a lighthouse.', every: 1, op: { op: 'beam', dist: 3, ticks: 3 } },
     fight: { name: 'Lampward', text: 'The weakest ally gains a 200 + DMG shield.', every: 2, op: { op: 'ward', amount: 200, pct: 100 } },
-    ult: { kind: 'command', name: 'Beacon', text: 'An allied hero on the aimed cell arrives on her cell.', cooldown: 4, range: 99, op: { op: 'beacon' } },
+    ult: { kind: 'card', name: 'Beacon', text: 'A card, in motion: an allied hero anywhere arrives on her cell.', cooldown: 4, card: 'beacon' },
     cards: ['rescueLine', 'foghorn', 'keepersOath'],
   },
   vintnerGhast: {
@@ -500,7 +505,7 @@ export const CARD_OWNER: Partial<Record<CardId, HeroId>> = Object.fromEntries(
   }),
 );
 
-/** One copy of every staple and of each hero's cards. */
+/** One copy of every staple (two of the doubled ones) and of each hero's cards. */
 export function buildDeck(lineup: readonly HeroId[]): CardId[] {
-  return [...STAPLES, ...lineup.flatMap((h) => heroDef(h).cards)];
+  return [...STAPLES, ...DOUBLED, ...lineup.flatMap((h) => heroDef(h).cards)];
 }
